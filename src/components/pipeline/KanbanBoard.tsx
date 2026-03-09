@@ -192,7 +192,28 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                     <GripVertical className="w-4 h-4 text-muted-foreground" />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
+                                      {pipeline === "sales" && contact.stage !== "lead_responded" && (
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <MoreHorizontal className="w-3.5 h-3.5" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={(e) => handleMarkReplied(contact, e)}>
+                                              <MessageSquareOff className="w-4 h-4 mr-2" /> Mark as Replied
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      )}
+                                    </div>
                                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                                       {contact.email && (
                                         <span className="flex items-center gap-0.5 truncate">

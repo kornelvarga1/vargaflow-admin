@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import AppLayout from "@/components/layout/AppLayout";
 import Index from "./pages/Index";
 import SettingsPage from "./pages/SettingsPage";
+import ContactsPage from "./pages/ContactsPage";
+import SalesPipelinePage from "./pages/SalesPipelinePage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -18,8 +20,9 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/pipeline/:type" element={<PlaceholderPage title="Pipeline" />} />
-            <Route path="/contacts" element={<PlaceholderPage title="Contacts" />} />
+            <Route path="/contacts" element={<ContactsPage />} />
+            <Route path="/pipeline/sales" element={<SalesPipelinePage />} />
+            <Route path="/pipeline/onboarding" element={<PlaceholderPage title="Onboarding Pipeline" />} />
             <Route path="/messages" element={<PlaceholderPage title="Message Queue" />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

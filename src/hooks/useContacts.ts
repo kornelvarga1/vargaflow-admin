@@ -55,7 +55,10 @@ export function useCreateContact() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      if (data) logActivity("contact_created", "was added as a new contact", data.id);
+    },
   });
 }
 

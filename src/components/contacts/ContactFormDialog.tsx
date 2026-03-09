@@ -1,0 +1,141 @@
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useCreateContact, useUpdateContact, SALES_STAGES, LEAD_SOURCES, type Contact, type ContactInsert } from "@/hooks/useContacts";
+import { toast } from "sonner";
+
+interface Props {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contact?: Contact | null;
+  defaultStage?: string;
+}
+
+export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage }: Props) {
+  const create = useCreateContact();
+  const update = useUpdateContact();
+  const isEdit = !!contact;
+
+  const [form, setForm] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
+    lead_source: "Other",
+    stage: defaultStage || "lead_in",
+    pipeline: "sales",
+    notes: "",
+    tags: [] as string[],
+  });
+
+  useEffect(() => {
+    if (contact) {
+      setForm({
+        full_name: contact.full_name,
+        email: contact.email || "",
+        phone: contact.phone || "",
+        lead_source: contact.lead_source,
+        stage: contact.stage,
+        pipeline: contact.pipeline,
+        notes: contact.notes || "",
+        tags: contact.tags || [],
+      });
+    } else {
+      setForm({
+        full_name: "",
+        email: "",
+        phone: "",
+        lead_source: "Other",
+        stage: defaultStage || "lead_in",
+        pipeline: "sales",
+        notes: "",
+        tags: [],
+      });
+    }
+  }, [contact, open, defaultStage]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.full_name.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    try {
+      if (isEdit) {
+        await update.mutateAsync({ id: contact.id, ...form });
+        toast.success("Contact updated");
+      } else {
+        await create.mutateAsync(form as ContactInsert);
+        toast.success("Contact created");
+      }
+      onOpenChange(false);
+    } catch {
+      toast.error("Something went wrong");
+    }
+  };
+
+  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md bg-card border-border">
+        <DialogHeader>
+          <DialogTitle className="font-display">{isEdit ? "Edit Contact" : "Add Contact"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Full Name *</Label>
+            <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="John Smith" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="john@example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label>Phone</Label>
+              <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+1 555 0100" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Lead Source</Label>
+              <Select value={form.lead_source} onValueChange={(v) => set("lead_source", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {LEAD_SOURCES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Stage</Label>
+              <Select value={form.stage} onValueChange={(v) => set("stage", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SALES_STAGES.map((s) => (
+                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional notes..." rows={3} />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={create.isPending || update.isPending}>
+              {isEdit ? "Save Changes" : "Add Contact"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

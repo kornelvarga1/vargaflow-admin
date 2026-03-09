@@ -51,7 +51,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
         phone: "",
         lead_source: "Other",
         stage: defaultStage || "lead_in",
-        pipeline: "sales",
+        pipeline: defaultPipeline || "sales",
         notes: "",
         tags: [],
       });

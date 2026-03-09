@@ -23,7 +23,7 @@ const App = () => (
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/pipeline/sales" element={<SalesPipelinePage />} />
-            <Route path="/pipeline/onboarding" element={<PlaceholderPage title="Onboarding Pipeline" />} />
+            <Route path="/pipeline/onboarding" element={<OnboardingPipelinePage />} />
             <Route path="/messages" element={<PlaceholderPage title="Message Queue" />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

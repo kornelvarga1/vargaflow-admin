@@ -43,13 +43,26 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
     if (!contact || contact.stage === newStage) return;
 
     try {
-      await updateContact.mutateAsync({
-        id: contactId,
-        stage: newStage,
-        stage_entered_at: new Date().toISOString(),
-      });
-      const stageLabel = stages.find((s) => s.key === newStage)?.label || newStage;
-      toast.success(`${contact.full_name} → ${stageLabel}`);
+      // Auto-move to onboarding when dropped in "Closed / Won"
+      if (pipeline === "sales" && newStage === "closed_won") {
+        await updateContact.mutateAsync({
+          id: contactId,
+          pipeline: "onboarding",
+          stage: "intake",
+          stage_entered_at: new Date().toISOString(),
+        });
+        toast.success(`${contact.full_name} → Onboarding (Intake)`, {
+          description: "Automatically moved to the onboarding pipeline.",
+        });
+      } else {
+        await updateContact.mutateAsync({
+          id: contactId,
+          stage: newStage,
+          stage_entered_at: new Date().toISOString(),
+        });
+        const stageLabel = stages.find((s) => s.key === newStage)?.label || newStage;
+        toast.success(`${contact.full_name} → ${stageLabel}`);
+      }
     } catch {
       toast.error("Failed to move contact");
     }

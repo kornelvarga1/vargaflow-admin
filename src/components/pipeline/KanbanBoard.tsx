@@ -30,9 +30,28 @@ interface Props {
 
 export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stages, contacts, isLoading, defaultAddStage }: Props) {
   const updateContact = useUpdateContact();
+  const stopSequences = useStopContactSequences();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [defaultStage, setDefaultStage] = useState(defaultAddStage);
+
+  const handleMarkReplied = async (contact: Contact, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await stopSequences.mutateAsync(contact.id);
+      await updateContact.mutateAsync({
+        id: contact.id,
+        stage: "lead_responded",
+        stage_entered_at: new Date().toISOString(),
+      });
+      await logActivity("marked_replied", "was marked as replied — sequences stopped", contact.id);
+      toast.success(`${contact.full_name} marked as replied`, {
+        description: "All active sequences stopped.",
+      });
+    } catch {
+      toast.error("Failed to mark as replied");
+    }
+  };
 
   const columns = stages.map((stage) => ({
     ...stage,

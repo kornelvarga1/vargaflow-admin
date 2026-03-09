@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppLayout from "@/components/layout/AppLayout";
+import OnboardingPipelinePage from "./pages/OnboardingPipelinePage";
 import Index from "./pages/Index";
 import SettingsPage from "./pages/SettingsPage";
 import ContactsPage from "./pages/ContactsPage";
@@ -22,7 +23,7 @@ const App = () => (
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/pipeline/sales" element={<SalesPipelinePage />} />
-            <Route path="/pipeline/onboarding" element={<PlaceholderPage title="Onboarding Pipeline" />} />
+            <Route path="/pipeline/onboarding" element={<OnboardingPipelinePage />} />
             <Route path="/messages" element={<PlaceholderPage title="Message Queue" />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

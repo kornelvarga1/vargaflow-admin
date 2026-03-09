@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useCreateContact, useUpdateContact, SALES_STAGES, LEAD_SOURCES, type Contact, type ContactInsert } from "@/hooks/useContacts";
+import { useCreateContact, useUpdateContact, SALES_STAGES, ONBOARDING_STAGES, LEAD_SOURCES, type Contact, type ContactInsert } from "@/hooks/useContacts";
 import { toast } from "sonner";
 
 interface Props {
@@ -13,9 +13,10 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   contact?: Contact | null;
   defaultStage?: string;
+  defaultPipeline?: string;
 }
 
-export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage }: Props) {
+export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage, defaultPipeline }: Props) {
   const create = useCreateContact();
   const update = useUpdateContact();
   const isEdit = !!contact;
@@ -26,7 +27,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
     phone: "",
     lead_source: "Other",
     stage: defaultStage || "lead_in",
-    pipeline: "sales",
+    pipeline: defaultPipeline || "sales",
     notes: "",
     tags: [] as string[],
   });
@@ -50,7 +51,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
         phone: "",
         lead_source: "Other",
         stage: defaultStage || "lead_in",
-        pipeline: "sales",
+        pipeline: defaultPipeline || "sales",
         notes: "",
         tags: [],
       });
@@ -117,7 +118,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
               <Select value={form.stage} onValueChange={(v) => set("stage", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SALES_STAGES.map((s) => (
+                  {(form.pipeline === "onboarding" ? ONBOARDING_STAGES : SALES_STAGES).map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>

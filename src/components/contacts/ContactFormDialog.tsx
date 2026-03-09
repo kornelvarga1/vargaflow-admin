@@ -118,7 +118,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
               <Select value={form.stage} onValueChange={(v) => set("stage", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SALES_STAGES.map((s) => (
+                  {(form.pipeline === "onboarding" ? ONBOARDING_STAGES : SALES_STAGES).map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>

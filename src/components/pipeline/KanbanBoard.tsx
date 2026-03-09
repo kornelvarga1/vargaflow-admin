@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
+import { useEnrollContact, generateSequenceMessages } from "@/hooks/useSequences";
+import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,31 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
     contacts: contacts.filter((c) => c.stage === stage.key),
   }));
 
+  /** Check for active sequences matching a pipeline+stage and enroll the contact */
+  const triggerSequences = async (contactId: string, targetPipeline: string, targetStage: string) => {
+    const { data: activeSeqs } = await supabase
+      .from("sequences")
+      .select("id")
+      .eq("pipeline", targetPipeline)
+      .eq("stage", targetStage)
+      .eq("is_active", true);
+
+    if (activeSeqs && activeSeqs.length > 0) {
+      for (const seq of activeSeqs) {
+        // Enroll
+        const { data: enrollment } = await supabase
+          .from("contact_sequences")
+          .insert({ contact_id: contactId, sequence_id: seq.id, status: "active", current_step: 0 })
+          .select()
+          .single();
+        if (enrollment) {
+          await generateSequenceMessages(contactId, seq.id, enrollment.id);
+        }
+      }
+      toast.info(`Enrolled in ${activeSeqs.length} sequence(s)`, { description: "Check Message Queue for pending messages." });
+    }
+  };
+
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
     const contactId = result.draggableId;
@@ -54,6 +81,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
         toast.success(`${contact.full_name} → Onboarding (Intake)`, {
           description: "Automatically moved to the onboarding pipeline.",
         });
+        await triggerSequences(contactId, "onboarding", "intake");
       } else {
         await updateContact.mutateAsync({
           id: contactId,
@@ -62,6 +90,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
         });
         const stageLabel = stages.find((s) => s.key === newStage)?.label || newStage;
         toast.success(`${contact.full_name} → ${stageLabel}`);
+        await triggerSequences(contactId, pipeline, newStage);
       }
     } catch {
       toast.error("Failed to move contact");

@@ -1,13 +1,14 @@
 import { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap } from "lucide-react";
+import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/pipeline/sales", icon: Kanban, label: "Sales Pipeline" },
   { to: "/pipeline/onboarding", icon: Zap, label: "Onboarding" },
   { to: "/contacts", icon: Users, label: "Contacts" },
-  { to: "/messages", icon: MessageSquare, label: "Message Queue" },
+  { to: "/sequences", icon: ListChecks, label: "Sequences" },
+  { to: "/messages", icon: MessageSquare, label: "Messages" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

@@ -22,7 +22,31 @@ interface Props {
 export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage, defaultPipeline }: Props) {
   const create = useCreateContact();
   const update = useUpdateContact();
+  const stopSequences = useStopContactSequences();
   const isEdit = !!contact;
+  const [markingReplied, setMarkingReplied] = useState(false);
+
+  const handleMarkReplied = async () => {
+    if (!contact) return;
+    setMarkingReplied(true);
+    try {
+      await stopSequences.mutateAsync(contact.id);
+      await update.mutateAsync({
+        id: contact.id,
+        stage: "lead_responded",
+        stage_entered_at: new Date().toISOString(),
+      });
+      await logActivity("marked_replied", "was marked as replied — sequences stopped", contact.id);
+      toast.success(`${contact.full_name} marked as replied`, {
+        description: "All active sequences stopped and pending messages cancelled.",
+      });
+      onOpenChange(false);
+    } catch {
+      toast.error("Failed to mark as replied");
+    } finally {
+      setMarkingReplied(false);
+    }
+  };
 
   const [form, setForm] = useState({
     full_name: "",

@@ -107,7 +107,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
   };
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col animate-fade-in">
+    <div className="p-4 md:p-6 h-full flex flex-col animate-fade-in overflow-hidden">
       <div className="flex items-center justify-between gap-4 mb-5">
         <div>
           <h1 className="text-2xl font-display font-bold">{title}</h1>
@@ -119,16 +119,16 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
       </div>
 
       {isLoading ? (
-        <div className="flex gap-4 overflow-x-auto flex-1 pb-4">
+        <div className="flex gap-3 md:gap-4 overflow-x-auto flex-1 pb-4 snap-x snap-mandatory md:snap-none -mx-4 px-4 md:mx-0 md:px-0">
           {stages.map((s) => (
-            <div key={s.key} className="w-72 shrink-0 bg-secondary/50 rounded-lg animate-pulse h-64" />
+            <div key={s.key} className="w-64 md:w-72 shrink-0 snap-start bg-secondary/50 rounded-lg animate-pulse h-64" />
           ))}
         </div>
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-4 overflow-x-auto flex-1 pb-4">
+          <div className="flex gap-3 md:gap-4 overflow-x-auto flex-1 pb-4 snap-x snap-mandatory md:snap-none -mx-4 px-4 md:mx-0 md:px-0">
             {columns.map((col) => (
-              <div key={col.key} className="w-72 shrink-0 flex flex-col">
+              <div key={col.key} className="w-64 md:w-72 shrink-0 snap-start flex flex-col">
                 <div className="flex items-center justify-between mb-3 px-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-display font-semibold">{col.label}</h3>

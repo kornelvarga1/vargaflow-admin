@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
-import { useEnrollContact, generateSequenceMessages } from "@/hooks/useSequences";
+import { useEnrollContact, generateSequenceMessages, useStopContactSequences } from "@/hooks/useSequences";
 import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Mail, Phone, GripVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Mail, Phone, GripVertical, MoreHorizontal, MessageSquareOff } from "lucide-react";
 import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
 
@@ -29,9 +30,28 @@ interface Props {
 
 export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stages, contacts, isLoading, defaultAddStage }: Props) {
   const updateContact = useUpdateContact();
+  const stopSequences = useStopContactSequences();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [defaultStage, setDefaultStage] = useState(defaultAddStage);
+
+  const handleMarkReplied = async (contact: Contact, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await stopSequences.mutateAsync(contact.id);
+      await updateContact.mutateAsync({
+        id: contact.id,
+        stage: "lead_responded",
+        stage_entered_at: new Date().toISOString(),
+      });
+      await logActivity("marked_replied", "was marked as replied — sequences stopped", contact.id);
+      toast.success(`${contact.full_name} marked as replied`, {
+        description: "All active sequences stopped.",
+      });
+    } catch {
+      toast.error("Failed to mark as replied");
+    }
+  };
 
   const columns = stages.map((stage) => ({
     ...stage,
@@ -172,7 +192,28 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                     <GripVertical className="w-4 h-4 text-muted-foreground" />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
+                                    <div className="flex items-center justify-between">
+                                      <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
+                                      {pipeline === "sales" && contact.stage !== "lead_responded" && (
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <MoreHorizontal className="w-3.5 h-3.5" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={(e) => handleMarkReplied(contact, e)}>
+                                              <MessageSquareOff className="w-4 h-4 mr-2" /> Mark as Replied
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      )}
+                                    </div>
                                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                                       {contact.email && (
                                         <span className="flex items-center gap-0.5 truncate">

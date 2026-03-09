@@ -6,6 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCreateContact, useUpdateContact, SALES_STAGES, ONBOARDING_STAGES, LEAD_SOURCES, type Contact, type ContactInsert } from "@/hooks/useContacts";
+import { useStopContactSequences } from "@/hooks/useSequences";
+import { logActivity } from "@/hooks/useActivityLog";
+import { MessageSquareOff } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -19,7 +22,31 @@ interface Props {
 export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage, defaultPipeline }: Props) {
   const create = useCreateContact();
   const update = useUpdateContact();
+  const stopSequences = useStopContactSequences();
   const isEdit = !!contact;
+  const [markingReplied, setMarkingReplied] = useState(false);
+
+  const handleMarkReplied = async () => {
+    if (!contact) return;
+    setMarkingReplied(true);
+    try {
+      await stopSequences.mutateAsync(contact.id);
+      await update.mutateAsync({
+        id: contact.id,
+        stage: "lead_responded",
+        stage_entered_at: new Date().toISOString(),
+      });
+      await logActivity("marked_replied", "was marked as replied — sequences stopped", contact.id);
+      toast.success(`${contact.full_name} marked as replied`, {
+        description: "All active sequences stopped and pending messages cancelled.",
+      });
+      onOpenChange(false);
+    } catch {
+      toast.error("Failed to mark as replied");
+    } finally {
+      setMarkingReplied(false);
+    }
+  };
 
   const [form, setForm] = useState({
     full_name: "",
@@ -129,11 +156,28 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
             <Label>Notes</Label>
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional notes..." rows={3} />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={create.isPending || update.isPending}>
-              {isEdit ? "Save Changes" : "Add Contact"}
-            </Button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {isEdit && contact.pipeline === "sales" && contact.stage !== "lead_responded" ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs border-accent/40 text-accent-foreground hover:bg-accent/20"
+                onClick={handleMarkReplied}
+                disabled={markingReplied}
+              >
+                <MessageSquareOff className="w-3.5 h-3.5 mr-1" />
+                {markingReplied ? "Stopping…" : "Mark as Replied"}
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={create.isPending || update.isPending}>
+                {isEdit ? "Save Changes" : "Add Contact"}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

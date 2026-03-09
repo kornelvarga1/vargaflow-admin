@@ -15,6 +15,15 @@ export const SALES_STAGES = [
   { key: "closed_lost", label: "Closed / Lost" },
 ] as const;
 
+export const ONBOARDING_STAGES = [
+  { key: "intake", label: "Intake" },
+  { key: "questionnaire_sent", label: "Questionnaire Sent" },
+  { key: "content_collection", label: "Content Collection" },
+  { key: "design_in_progress", label: "Design in Progress" },
+  { key: "review_revision", label: "Review & Revision" },
+  { key: "launched", label: "Launched" },
+] as const;
+
 export const LEAD_SOURCES = [
   "Facebook Ads",
   "Google Ads",

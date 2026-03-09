@@ -49,7 +49,7 @@ export default function Index() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 stagger-in">
             <StatCard
               icon={Users}
               label="Total Contacts"

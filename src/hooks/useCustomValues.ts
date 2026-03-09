@@ -47,7 +47,8 @@ export function replaceCustomValues(
 ): string {
   let result = template;
   for (const v of values) {
-    result = result.replaceAll(`{{${v.key}}}`, v.value || `{{${v.key}}}`);
+    const pattern = new RegExp(`\\{\\{${v.key}\\}\\}`, "g");
+    result = result.replace(pattern, v.value || `{{${v.key}}}`);
   }
   return result;
 }

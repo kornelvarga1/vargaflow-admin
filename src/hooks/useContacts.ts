@@ -10,6 +10,7 @@ export type ContactUpdate = TablesUpdate<"contacts">;
 export const SALES_STAGES = [
   { key: "lead_in", label: "Lead In" },
   { key: "contacted", label: "Contacted" },
+  { key: "lead_responded", label: "Lead Responded" },
   { key: "discovery_call", label: "Discovery Call" },
   { key: "proposal_sent", label: "Proposal Sent" },
   { key: "closed_won", label: "Closed / Won" },

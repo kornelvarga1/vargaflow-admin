@@ -156,11 +156,28 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
             <Label>Notes</Label>
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional notes..." rows={3} />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={create.isPending || update.isPending}>
-              {isEdit ? "Save Changes" : "Add Contact"}
-            </Button>
+          <div className="flex items-center justify-between gap-2 pt-2">
+            {isEdit && contact.pipeline === "sales" && contact.stage !== "lead_responded" ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs border-accent/40 text-accent-foreground hover:bg-accent/20"
+                onClick={handleMarkReplied}
+                disabled={markingReplied}
+              >
+                <MessageSquareOff className="w-3.5 h-3.5 mr-1" />
+                {markingReplied ? "Stopping…" : "Mark as Replied"}
+              </Button>
+            ) : (
+              <div />
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={create.isPending || update.isPending}>
+                {isEdit ? "Save Changes" : "Add Contact"}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

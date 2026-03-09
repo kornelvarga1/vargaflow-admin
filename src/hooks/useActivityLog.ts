@@ -28,11 +28,12 @@ export async function logActivity(
   contactId?: string,
   metadata?: Record<string, unknown>
 ) {
-  const { error } = await supabase.from("activity_log").insert([{
+  const row: TablesInsert<"activity_log"> = {
     activity_type: activityType,
     description,
     contact_id: contactId || null,
-    metadata: (metadata || {}) as Record<string, unknown>,
-  }]);
+    metadata: (metadata || {}) as Json,
+  };
+  const { error } = await supabase.from("activity_log").insert([row]);
   if (error) console.error("Failed to log activity:", error);
 }

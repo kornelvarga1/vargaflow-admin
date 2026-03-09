@@ -13,6 +13,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   contact?: Contact | null;
   defaultStage?: string;
+  defaultPipeline?: string;
 }
 
 export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage }: Props) {

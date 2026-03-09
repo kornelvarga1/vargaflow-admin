@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/supabase/types";
 
 export type ActivityLog = Tables<"activity_log"> & {
   contacts?: { full_name: string } | null;

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
-import { useEnrollContact, generateSequenceMessages } from "@/hooks/useSequences";
+import { useEnrollContact, generateSequenceMessages, useStopContactSequences } from "@/hooks/useSequences";
 import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Mail, Phone, GripVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Mail, Phone, GripVertical, MoreHorizontal, MessageSquareOff } from "lucide-react";
 import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
 

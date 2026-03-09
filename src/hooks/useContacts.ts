@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/hooks/useActivityLog";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
 export type Contact = Tables<"contacts">;
@@ -54,7 +55,10 @@ export function useCreateContact() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts"] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      if (data) logActivity("contact_created", "was added as a new contact", data.id);
+    },
   });
 }
 

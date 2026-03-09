@@ -2,6 +2,7 @@ import { useState } from "react";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
 import { useEnrollContact, generateSequenceMessages } from "@/hooks/useSequences";
+import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +82,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
         toast.success(`${contact.full_name} → Onboarding (Intake)`, {
           description: "Automatically moved to the onboarding pipeline.",
         });
+        await logActivity("stage_changed", `moved to Onboarding → Intake`, contactId);
         await triggerSequences(contactId, "onboarding", "intake");
       } else {
         await updateContact.mutateAsync({
@@ -90,6 +92,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
         });
         const stageLabel = stages.find((s) => s.key === newStage)?.label || newStage;
         toast.success(`${contact.full_name} → ${stageLabel}`);
+        await logActivity("stage_changed", `moved to ${stageLabel}`, contactId);
         await triggerSequences(contactId, pipeline, newStage);
       }
     } catch {

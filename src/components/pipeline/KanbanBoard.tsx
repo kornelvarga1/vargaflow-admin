@@ -107,7 +107,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
   };
 
   return (
-    <div className="p-4 md:p-6 h-full flex flex-col animate-fade-in">
+    <div className="p-4 md:p-6 h-full flex flex-col animate-fade-in overflow-hidden">
       <div className="flex items-center justify-between gap-4 mb-5">
         <div>
           <h1 className="text-2xl font-display font-bold">{title}</h1>

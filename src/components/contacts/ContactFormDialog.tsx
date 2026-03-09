@@ -16,7 +16,7 @@ interface Props {
   defaultPipeline?: string;
 }
 
-export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage }: Props) {
+export default function ContactFormDialog({ open, onOpenChange, contact, defaultStage, defaultPipeline }: Props) {
   const create = useCreateContact();
   const update = useUpdateContact();
   const isEdit = !!contact;

@@ -36,7 +36,7 @@ export default function Index() {
   const { data: activities = [], isLoading: actLoading } = useActivityLog(15);
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6 animate-fade-in">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6 animate-slide-up">
       <div>
         <h1 className="text-3xl font-display font-bold">Dashboard</h1>
         <p className="text-muted-foreground mt-1">Welcome back to Local Scaling CRM</p>

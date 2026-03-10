@@ -62,7 +62,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           />
           <aside className="relative w-64 bg-sidebar border-r border-border flex flex-col animate-slide-in-right">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <img src={logo} alt="VargaFlow" className="h-6 invert" />
+              <img src={logo} alt="VargaFlow" className="h-5 brightness-0 invert" />
+              <span className="font-display font-bold text-foreground">VargaFlow</span>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileMenuOpen(false)}>
                 <X className="w-4 h-4" />
               </Button>

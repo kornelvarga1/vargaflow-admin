@@ -48,7 +48,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="px-5 py-3 border-t border-border">
-          <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">Local Scaling CRM</p>
+          <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">VargaFlow</p>
         </div>
       </aside>
 

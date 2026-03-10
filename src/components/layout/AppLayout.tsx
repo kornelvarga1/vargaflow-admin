@@ -2,6 +2,7 @@ import { ReactNode, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import logo from "@/assets/logo.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -25,10 +26,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 flex-col border-r border-border bg-sidebar shrink-0">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
-            <Zap className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-display font-bold text-lg text-foreground tracking-tight">Local Scaling</span>
+          <img src={logo} alt="VargaFlow" className="h-7 invert" />
         </div>
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => (
@@ -50,7 +48,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="px-5 py-3 border-t border-border">
-          <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">Local Scaling CRM</p>
+          <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">VargaFlow</p>
         </div>
       </aside>
 
@@ -63,12 +61,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           />
           <aside className="relative w-64 bg-sidebar border-r border-border flex flex-col animate-slide-in-right">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
-                  <Zap className="w-4 h-4 text-primary-foreground" />
-                </div>
-                <span className="font-display font-bold text-foreground">Local Scaling</span>
-              </div>
+              <img src={logo} alt="VargaFlow" className="h-6 invert" />
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileMenuOpen(false)}>
                 <X className="w-4 h-4" />
               </Button>

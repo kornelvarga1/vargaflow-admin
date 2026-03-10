@@ -128,7 +128,7 @@
   .glass {
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
-    background: hsl(220 18% 9% / 0.85);
+    background: hsl(0 0% 5% / 0.85);
   }
 
   /* Hover lift */

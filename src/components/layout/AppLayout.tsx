@@ -26,10 +26,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 flex-col border-r border-border bg-sidebar shrink-0">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center shadow-glow">
-            <Zap className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <span className="font-display font-bold text-lg text-foreground tracking-tight">Local Scaling</span>
+          <img src={logo} alt="VargaFlow" className="h-7 invert" />
         </div>
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => (

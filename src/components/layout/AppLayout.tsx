@@ -2,7 +2,7 @@ import { ReactNode, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logo from "@/assets/logo.png";
+import icon from "@/assets/icon.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },

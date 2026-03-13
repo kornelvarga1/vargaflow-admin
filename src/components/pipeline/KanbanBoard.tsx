@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
 import { useEnrollContact, generateSequenceMessages, useStopContactSequences } from "@/hooks/useSequences";
@@ -29,6 +30,7 @@ interface Props {
 }
 
 export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stages, contacts, isLoading, defaultAddStage }: Props) {
+  const navigate = useNavigate();
   const updateContact = useUpdateContact();
   const stopSequences = useStopContactSequences();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -182,7 +184,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                 className={`bg-card border-border cursor-pointer transition-all ${
                                   snapshot.isDragging ? "shadow-glow rotate-1" : "hover:border-accent/40"
                                 }`}
-                                onClick={() => { setEditing(contact); setDialogOpen(true); }}
+                                onClick={() => navigate(`/contacts/${contact.id}`)}
                               >
                                 <CardContent className="p-3 flex items-start gap-2">
                                   <div

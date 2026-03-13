@@ -30,6 +30,7 @@ interface Props {
 }
 
 export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stages, contacts, isLoading, defaultAddStage }: Props) {
+  const navigate = useNavigate();
   const updateContact = useUpdateContact();
   const stopSequences = useStopContactSequences();
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -13,7 +13,7 @@ export default function OnboardingPipelinePage() {
       stages={ONBOARDING_STAGES}
       contacts={contacts}
       isLoading={isLoading}
-      defaultAddStage="intake"
+      defaultAddStage="waiting_onboarding_form"
     />
   );
 }

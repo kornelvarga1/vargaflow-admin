@@ -75,7 +75,7 @@ export default function ContactsPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((c) => (
-            <Card key={c.id} className="bg-card border-border hover:border-accent/50 transition-colors">
+            <Card key={c.id} className="bg-card border-border hover:border-accent/50 transition-colors cursor-pointer" onClick={() => navigate(`/contacts/${c.id}`)}>
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center shrink-0">
                   <span className="text-sm font-display font-bold text-accent-foreground">

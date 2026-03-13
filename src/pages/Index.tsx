@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import NeedsAttentionSection from "@/components/dashboard/NeedsAttentionSection";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
@@ -41,6 +42,9 @@ export default function Index() {
         <h1 className="text-3xl font-display font-bold">Dashboard</h1>
         <p className="text-muted-foreground mt-1">Welcome back to Local Scaling CRM</p>
       </div>
+
+      {/* Needs Attention - always visible first */}
+      <NeedsAttentionSection />
 
       {/* Top stat cards */}
       {statsLoading ? (

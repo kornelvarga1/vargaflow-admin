@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useContacts, useDeleteContact, SALES_STAGES, LEAD_SOURCES, type Contact } from "@/hooks/useContacts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

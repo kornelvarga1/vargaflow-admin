@@ -9,21 +9,27 @@ export type ContactUpdate = TablesUpdate<"contacts">;
 
 export const SALES_STAGES = [
   { key: "lead_in", label: "Lead In" },
-  { key: "contacted", label: "Contacted" },
-  { key: "lead_responded", label: "Lead Responded" },
-  { key: "discovery_call", label: "Discovery Call" },
-  { key: "proposal_sent", label: "Proposal Sent" },
-  { key: "closed_won", label: "Closed / Won" },
-  { key: "closed_lost", label: "Closed / Lost" },
+  { key: "no_contact_1x", label: "No Contact x1 Text" },
+  { key: "no_contact_2x", label: "No Contact 2x Text" },
+  { key: "no_contact_3x", label: "No Contact 3x Text" },
+  { key: "long_term_nurture", label: "No Contact → Long Term Nurture" },
+  { key: "ready_to_close", label: "Ready to Close 🔥" },
+  { key: "zoom_booked", label: "Zoom Call Booked" },
+  { key: "zoom_finished", label: "Zoom Call Finished (Follow Up?)" },
+  { key: "cancelled_reschedule", label: "Cancelled/Reschedule" },
+  { key: "no_showed_zoom", label: "No Showed to Zoom" },
+  { key: "client_closed", label: "Client Closed" },
 ] as const;
 
 export const ONBOARDING_STAGES = [
-  { key: "intake", label: "Intake" },
-  { key: "questionnaire_sent", label: "Questionnaire Sent" },
-  { key: "content_collection", label: "Content Collection" },
-  { key: "design_in_progress", label: "Design in Progress" },
-  { key: "review_revision", label: "Review & Revision" },
-  { key: "launched", label: "Launched" },
+  { key: "waiting_onboarding_form", label: "New Client Waiting for Onboarding Form" },
+  { key: "form_submitted", label: "Form Submitted" },
+  { key: "project_ready", label: "Project Ready to Start" },
+  { key: "launch_call_booked", label: "Launch Call Booked 🚀" },
+  { key: "gmb_issue", label: "GMB Issue / Phone Verification Issue 🚨" },
+  { key: "approved_retainer", label: "Approved - Client on Retainer" },
+  { key: "cc_declined", label: "Credit Card Declined" },
+  { key: "client_churned", label: "Client Churned" },
 ] as const;
 
 export const LEAD_SOURCES = [

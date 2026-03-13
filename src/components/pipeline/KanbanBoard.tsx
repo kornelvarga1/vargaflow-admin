@@ -92,18 +92,18 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
 
     try {
       // Auto-move to onboarding when dropped in "Closed / Won"
-      if (pipeline === "sales" && newStage === "closed_won") {
+      if (pipeline === "sales" && newStage === "client_closed") {
         await updateContact.mutateAsync({
           id: contactId,
           pipeline: "onboarding",
-          stage: "intake",
+          stage: "waiting_onboarding_form",
           stage_entered_at: new Date().toISOString(),
         });
-        toast.success(`${contact.full_name} → Onboarding (Intake)`, {
-          description: "Automatically moved to the onboarding pipeline.",
+        toast.success(`${contact.full_name} → Onboarding`, {
+          description: "Automatically moved to onboarding pipeline.",
         });
-        await logActivity("stage_changed", `moved to Onboarding → Intake`, contactId);
-        await triggerSequences(contactId, "onboarding", "intake");
+        await logActivity("stage_changed", `moved to Onboarding → Waiting for Onboarding Form`, contactId);
+        await triggerSequences(contactId, "onboarding", "waiting_onboarding_form");
       } else {
         await updateContact.mutateAsync({
           id: contactId,

@@ -43,6 +43,9 @@ export default function Index() {
         <p className="text-muted-foreground mt-1">Welcome back to Local Scaling CRM</p>
       </div>
 
+      {/* Needs Attention - always visible first */}
+      <NeedsAttentionSection />
+
       {/* Top stat cards */}
       {statsLoading ? (
         <div className="flex justify-center py-8">

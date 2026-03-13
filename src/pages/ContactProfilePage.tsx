@@ -137,13 +137,13 @@ function getActivityIcon(type: string) {
     case "stage_changed":
       return <ArrowRightLeft className="w-4 h-4 text-primary" />;
     case "message_sent":
-      return <Send className="w-4 h-4 text-green-600" />;
+      return <Send className="w-4 h-4 text-primary" />;
     case "contact_created":
-      return <User className="w-4 h-4 text-blue-500" />;
+      return <User className="w-4 h-4 text-accent-foreground" />;
     case "marked_replied":
       return <MessageSquare className="w-4 h-4 text-primary" />;
     case "sequence_enrolled":
-      return <Zap className="w-4 h-4 text-yellow-500" />;
+      return <Zap className="w-4 h-4 text-primary" />;
     default:
       return <Activity className="w-4 h-4 text-muted-foreground" />;
   }

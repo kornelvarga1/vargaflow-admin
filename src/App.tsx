@@ -29,6 +29,7 @@ const App = () => (
             <Route path="/pipeline/onboarding" element={<OnboardingPipelinePage />} />
             <Route path="/sequences" element={<SequencesPage />} />
             <Route path="/messages" element={<MessageQueuePage />} />
+            <Route path="/contacts/:id" element={<ContactProfilePage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>

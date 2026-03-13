@@ -184,7 +184,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                 className={`bg-card border-border cursor-pointer transition-all ${
                                   snapshot.isDragging ? "shadow-glow rotate-1" : "hover:border-accent/40"
                                 }`}
-                                onClick={() => { setEditing(contact); setDialogOpen(true); }}
+                                onClick={() => navigate(`/contacts/${contact.id}`)}
                               >
                                 <CardContent className="p-3 flex items-start gap-2">
                                   <div

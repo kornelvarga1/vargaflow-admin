@@ -26,8 +26,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 flex-col border-r border-border bg-sidebar shrink-0">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          <img src={icon} alt="VF" className="h-8 w-8" />
-          <span className="font-display font-bold text-base text-foreground tracking-tight">VargaFlow</span>
+          <img src={logo} alt="VargaFlow" className="h-9" />
         </div>
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => (

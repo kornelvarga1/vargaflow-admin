@@ -11,6 +11,7 @@ import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
 
 export default function ContactsPage() {
+  const navigate = useNavigate();
   const { data: contacts = [], isLoading } = useContacts();
   const deleteContact = useDeleteContact();
   const [search, setSearch] = useState("");

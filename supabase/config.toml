@@ -1,1 +1,165 @@
 project_id = "nxlptuvlpusrnkngxozn"
+[functions.flow-lead-form-submitted]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-lead-form-submitted/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-lead-form-submitted/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-lead-form-submitted/*.html" ]
+
+[functions.flow-call-booked]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-call-booked/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-call-booked/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-call-booked/*.html" ]
+
+[functions.cron-message-sender]
+enabled = true
+verify_jwt = true
+import_map = "./functions/cron-message-sender/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/cron-message-sender/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/cron-message-sender/*.html" ]
+
+[functions.flow-no-contact-1]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-no-contact-1/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-no-contact-1/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-no-contact-1/*.html" ]
+
+[functions.flow-no-contact-2]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-no-contact-2/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-no-contact-2/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-no-contact-2/*.html" ]
+
+[functions.flow-no-contact-3]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-no-contact-3/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-no-contact-3/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-no-contact-3/*.html" ]
+
+[functions.flow-long-term-nurture]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-long-term-nurture/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-long-term-nurture/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-long-term-nurture/*.html" ]
+
+[functions.flow-no-show]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-no-show/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-no-show/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-no-show/*.html" ]
+
+[functions.flow-cancelled]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-cancelled/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-cancelled/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-cancelled/*.html" ]
+
+[functions.flow-client-closed]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-client-closed/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-client-closed/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-client-closed/*.html" ]
+
+[functions.flow-ob-client-signup]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-ob-client-signup/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-ob-client-signup/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-ob-client-signup/*.html" ]
+
+[functions.flow-ob-form-reminder]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-ob-form-reminder/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-ob-form-reminder/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-ob-form-reminder/*.html" ]
+
+[functions.flow-ob-form-submitted]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-ob-form-submitted/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-ob-form-submitted/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-ob-form-submitted/*.html" ]
+
+[functions.flow-ob-project-ready]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-ob-project-ready/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-ob-project-ready/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-ob-project-ready/*.html" ]
+
+[functions.flow-ob-launch-call]
+enabled = true
+verify_jwt = true
+import_map = "./functions/flow-ob-launch-call/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/flow-ob-launch-call/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/flow-ob-launch-call/*.html" ]

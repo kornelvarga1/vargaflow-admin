@@ -1,0 +1,110 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSettings } from "../_shared/utils.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const { contact_id } = await req.json();
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const { data: contact, error } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", contact_id)
+      .single();
+
+    if (error || !contact) throw new Error("Contact not found");
+
+    // Check if they still need to fill out the form
+    const stillNeeds = (contact.tags ?? "").includes("Needs to Fill Out Onboarding Form");
+    if (!stillNeeds) {
+      return new Response(
+        JSON.stringify({ success: true, skipped: "form already submitted" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const settings = await getSettings(supabase);
+    const myName = settings.my_name || "Kornel";
+    const myEmail = settings.my_email || "hello@vargaflow.com";
+    const companyName = settings.company_name || "Local Scaling";
+    const onboardingFormLink = settings.onboarding_form_link || "[onboarding form link]";
+    const resendKey = Deno.env.get("RESEND_API_KEY")!;
+
+    const firstName = contact.full_name?.split(" ")[0] ?? "there";
+    const phone = contact.phone;
+    const email = contact.email;
+
+    // Send reminder email
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `${companyName} <hello@vargaflow.com>`,
+        to: email,
+        subject: `Onboarding Reminder for ${contact.full_name}`,
+        html: `
+          <p>Hey ${firstName}, we're happy to have you on board!</p>
+          <p>Before we can begin we'll need just 15 minutes of your time.</p>
+          <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
+          <p><strong>Step 2:</strong> Send us at least 25 photos — email to ${myEmail}</p>
+          <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
+          <p>Please take care of this right now. Thanks! — ${myName}, ${companyName}</p>
+        `,
+      }),
+    });
+
+    // Send reminder SMS
+    await supabase.from("message_queue").insert({
+      contact_id: contact.id,
+      message_type: "sms",
+      message_content: `Hey ${firstName}, super friendly but important reminder to please fill out your onboarding info. Here's the form: ${onboardingFormLink} — ${myName}. PS: I just re-emailed the onboarding info to your email.`,
+      scheduled_at: new Date(Date.now() + 60 * 1000).toISOString(),
+      status: "pending",
+      metadata: { to: phone },
+    });
+
+    // Schedule next reminder in 48 hours if still not done
+    await supabase.from("message_queue").insert({
+      contact_id: contact.id,
+      message_type: "sms",
+      message_content: `INTERNAL_TRIGGER:flow-ob-form-reminder`,
+      scheduled_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      status: "pending",
+      metadata: { to: "internal", trigger_flow: "flow-ob-form-reminder", contact_id: contact.id },
+    });
+
+    await supabase.from("automation_logs").insert({
+      contact_id: contact.id,
+      flow: "flow-ob-form-reminder",
+      status: "completed",
+      ran_at: new Date().toISOString(),
+    });
+
+    return new Response(
+      JSON.stringify({ success: true }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (err) {
+    console.error(err);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

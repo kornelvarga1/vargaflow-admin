@@ -238,7 +238,7 @@ export async function generateSequenceMessages(
 
   const { data: settings } = await supabase
     .from("settings")
-    .select("my_name, company_name")
+    .select("my_name, company_name, my_email, my_phone, website_url, onboarding_form_link, demo_calendar_link, launch_call_calendar_link")
     .limit(1)
     .single();
 
@@ -250,8 +250,15 @@ export async function generateSequenceMessages(
 
     const content = step.message_template
       .replace(/\{\{contact_name\}\}/g, contact?.full_name?.split(' ')[0] || 'there')
+      .replace(/\{\{contact_first_name\}\}/g, contact?.full_name?.split(' ')[0] || 'there')
       .replace(/\{\{my_name\}\}/g, settings?.my_name || '')
-      .replace(/\{\{company_name\}\}/g, settings?.company_name || '');
+      .replace(/\{\{company_name\}\}/g, settings?.company_name || '')
+      .replace(/\{\{onboarding_form_link\}\}/g, settings?.onboarding_form_link || '')
+      .replace(/\{\{my_email\}\}/g, settings?.my_email || '')
+      .replace(/\{\{my_phone\}\}/g, settings?.my_phone || '')
+      .replace(/\{\{website_url\}\}/g, settings?.website_url || '')
+      .replace(/\{\{demo_calendar_link\}\}/g, settings?.demo_calendar_link || '')
+      .replace(/\{\{launch_call_calendar_link\}\}/g, settings?.launch_call_calendar_link || '');
 
     return {
       contact_id: contactId,

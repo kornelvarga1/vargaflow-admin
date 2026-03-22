@@ -12,6 +12,8 @@ import SequencesPage from "./pages/SequencesPage";
 import MessageQueuePage from "./pages/MessageQueuePage";
 import ContactProfilePage from "./pages/ContactProfilePage";
 import ClientsPage from "./pages/ClientsPage";
+import LoginPage from "./pages/LoginPage";
+import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,20 +23,30 @@ const App = () => (
     <TooltipProvider>
       <Sonner />
       <BrowserRouter>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/contacts" element={<ContactsPage />} />
-            <Route path="/pipeline/sales" element={<SalesPipelinePage />} />
-            <Route path="/pipeline/onboarding" element={<OnboardingPipelinePage />} />
-            <Route path="/sequences" element={<SequencesPage />} />
-            <Route path="/messages" element={<MessageQueuePage />} />
-            <Route path="/contacts/:id" element={<ContactProfilePage />} />
-            <Route path="/clients" element={<ClientsPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AppLayout>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="*"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/contacts" element={<ContactsPage />} />
+                    <Route path="/pipeline/sales" element={<SalesPipelinePage />} />
+                    <Route path="/pipeline/onboarding" element={<OnboardingPipelinePage />} />
+                    <Route path="/sequences" element={<SequencesPage />} />
+                    <Route path="/messages" element={<MessageQueuePage />} />
+                    <Route path="/contacts/:id" element={<ContactProfilePage />} />
+                    <Route path="/clients" element={<ClientsPage />} />
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

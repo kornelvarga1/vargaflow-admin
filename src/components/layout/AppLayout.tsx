@@ -1,6 +1,7 @@
 import { ReactNode, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Building2, Menu, X } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Building2, Menu, X, LogOut } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
 
@@ -20,7 +21,13 @@ const mobileNavItems = navItems.slice(0, 5);
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -48,8 +55,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="px-5 py-3 border-t border-border">
+        <div className="px-5 py-3 border-t border-border flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">VargaFlow</p>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            title="Sign out"
+            onClick={handleLogout}
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </Button>
         </div>
       </aside>
 

@@ -230,19 +230,38 @@ export async function generateSequenceMessages(
 
   if (!steps || steps.length === 0) return;
 
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("phone, full_name, business_id")
+    .eq("id", contactId)
+    .single();
+
+  const { data: settings } = await supabase
+    .from("settings")
+    .select("my_name, company_name")
+    .limit(1)
+    .single();
+
   const now = new Date();
   const messages = steps.map((step) => {
     const scheduledAt = new Date(now);
     scheduledAt.setHours(scheduledAt.getHours() + step.delay_hours);
     scheduledAt.setMinutes(scheduledAt.getMinutes() + step.delay_minutes);
 
+    const content = step.message_template
+      .replace(/\{\{contact_name\}\}/g, contact?.full_name?.split(' ')[0] || 'there')
+      .replace(/\{\{my_name\}\}/g, settings?.my_name || '')
+      .replace(/\{\{company_name\}\}/g, settings?.company_name || '');
+
     return {
       contact_id: contactId,
       contact_sequence_id: contactSequenceId,
-      message_content: step.message_template,
+      message_content: content,
       message_type: step.message_type,
       scheduled_at: scheduledAt.toISOString(),
       status: "pending" as const,
+      to_phone: contact?.phone ?? null,
+      business_id: contact?.business_id ?? null,
     };
   });
 

@@ -6,12 +6,35 @@ import { Loader2 } from "lucide-react";
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setAuthenticated(!!session);
+    const check = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profile?.role !== "admin") {
+        await supabase.auth.signOut();
+        setErrorMessage("Access denied. This portal is for admins only.");
+        setLoading(false);
+        return;
+      }
+
+      setAuthenticated(true);
       setLoading(false);
-    });
+    };
+
+    check();
   }, []);
 
   if (loading) {
@@ -23,7 +46,13 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!authenticated) {
-    return <Navigate to="/login" replace />;
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={errorMessage ? { error: errorMessage } : undefined}
+      />
+    );
   }
 
   return <>{children}</>;

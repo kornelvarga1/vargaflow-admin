@@ -4,6 +4,9 @@ import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
@@ -13,9 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Pause, XCircle, Zap, Activity } from "lucide-react";
+import { Loader2, Pause, XCircle, Zap, Activity, ChevronDown, ChevronRight, Check, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+
+// ---- Active Automations (existing) ----
 
 type ContactSequenceRow = {
   id: string;
@@ -46,7 +51,6 @@ function useContactSequences(statusFilter: string) {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Get step counts for each sequence
       const sequenceIds = [...new Set((data || []).map((d: any) => d.sequence_id))];
       let stepCounts: Record<string, number> = {};
 
@@ -86,7 +90,6 @@ function useNextScheduledMessages(contactSequenceIds: string[]) {
 
       if (error) throw error;
 
-      // Get earliest per contact_sequence_id
       const map: Record<string, string> = {};
       for (const row of data || []) {
         if (row.contact_sequence_id && !map[row.contact_sequence_id]) {
@@ -106,7 +109,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   failed: { label: "Failed", variant: "destructive" },
 };
 
-export default function SequencesPage() {
+function ActiveAutomationsTab() {
   const [filter, setFilter] = useState("all");
   const { data: rows = [], isLoading } = useContactSequences(filter);
   const qc = useQueryClient();
@@ -135,7 +138,6 @@ export default function SequencesPage() {
         .update({ status: "stopped" })
         .eq("id", row.id);
       if (error) throw error;
-      // Cancel pending messages
       await supabase
         .from("message_queue")
         .update({ status: "cancelled" })
@@ -150,17 +152,8 @@ export default function SequencesPage() {
   });
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-            <Activity className="w-6 h-6 text-primary" />
-            Active Automations
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Monitor all running sequences and their progress
-          </p>
-        </div>
+    <div className="space-y-4">
+      <div className="flex justify-end">
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-40">
             <SelectValue />
@@ -258,6 +251,254 @@ export default function SequencesPage() {
           </Table>
         </Card>
       )}
+    </div>
+  );
+}
+
+// ---- Sequence Templates Tab ----
+
+type Sequence = {
+  id: string;
+  name: string;
+  pipeline: string;
+  stage: string;
+  is_active: boolean;
+};
+
+type SequenceStep = {
+  id: string;
+  sequence_id: string;
+  step_order: number;
+  message_type: string;
+  delay_hours: number;
+  delay_minutes: number;
+  message_template: string;
+};
+
+function useSequences() {
+  return useQuery({
+    queryKey: ["sequences_templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sequences")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data as Sequence[];
+    },
+  });
+}
+
+function useSequenceSteps(sequenceId: string) {
+  return useQuery({
+    queryKey: ["sequence_steps_templates", sequenceId],
+    enabled: !!sequenceId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sequence_steps")
+        .select("*")
+        .eq("sequence_id", sequenceId)
+        .order("step_order");
+      if (error) throw error;
+      return data as SequenceStep[];
+    },
+  });
+}
+
+function StepRow({ step }: { step: SequenceStep }) {
+  const qc = useQueryClient();
+  const [content, setContent] = useState(step.message_template);
+  const isDirty = content !== step.message_template;
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("sequence_steps")
+        .update({ message_template: content })
+        .eq("id", step.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sequence_steps_templates", step.sequence_id] });
+      toast.success("Step saved");
+    },
+    onError: () => toast.error("Failed to save step"),
+  });
+
+  const delayLabel =
+    step.delay_hours > 0 && step.delay_minutes > 0
+      ? `+${step.delay_hours}h ${step.delay_minutes}m`
+      : step.delay_hours > 0
+      ? `+${step.delay_hours}h`
+      : step.delay_minutes > 0
+      ? `+${step.delay_minutes}m`
+      : "Immediate";
+
+  return (
+    <div className="border border-border rounded-lg p-3 space-y-2 bg-secondary/20">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-mono text-muted-foreground w-8">#{step.step_order}</span>
+        <Badge
+          variant={step.message_type === "sms" ? "default" : "secondary"}
+          className="text-[10px] uppercase tracking-wide"
+        >
+          {step.message_type}
+        </Badge>
+        <span className="text-xs text-muted-foreground">{delayLabel}</span>
+      </div>
+      <Textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={3}
+        className="bg-background border-border text-sm font-mono resize-none"
+      />
+      {isDirty && (
+        <Button
+          size="sm"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="gradient-primary text-primary-foreground h-7 text-xs"
+        >
+          {saveMutation.isPending ? (
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          ) : (
+            <Check className="w-3 h-3 mr-1" />
+          )}
+          Save
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function SequenceCard({ seq }: { seq: Sequence }) {
+  const qc = useQueryClient();
+  const [expanded, setExpanded] = useState(false);
+  const { data: steps, isLoading: stepsLoading } = useSequenceSteps(expanded ? seq.id : "");
+
+  const toggleActive = useMutation({
+    mutationFn: async (val: boolean) => {
+      const { error } = await supabase
+        .from("sequences")
+        .update({ is_active: val })
+        .eq("id", seq.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sequences_templates"] });
+    },
+    onError: () => toast.error("Failed to update"),
+  });
+
+  return (
+    <Card className="bg-card border-border shadow-card">
+      <div
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/40 transition-colors rounded-t-lg"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        {expanded ? (
+          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+        ) : (
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{seq.name}</p>
+          <p className="text-xs text-muted-foreground">
+            {seq.pipeline} · {seq.stage}
+          </p>
+        </div>
+        <div
+          className="flex items-center gap-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-xs text-muted-foreground">
+            {seq.is_active ? "Active" : "Inactive"}
+          </span>
+          <Switch
+            checked={seq.is_active}
+            onCheckedChange={(val) => toggleActive.mutate(val)}
+            disabled={toggleActive.isPending}
+          />
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-2 border-t border-border pt-3">
+          {stepsLoading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : !steps || steps.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-2">No steps defined.</p>
+          ) : (
+            steps.map((step) => <StepRow key={step.id} step={step} />)
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SequenceTemplatesTab() {
+  const { data: sequences, isLoading } = useSequences();
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!sequences || sequences.length === 0) {
+    return (
+      <Card className="bg-card border-border">
+        <CardContent className="p-12 text-center">
+          <ListChecks className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
+          <p className="text-muted-foreground">No sequences found.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {sequences.map((seq) => (
+        <SequenceCard key={seq.id} seq={seq} />
+      ))}
+    </div>
+  );
+}
+
+// ---- Page ----
+
+export default function SequencesPage() {
+  return (
+    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
+      <div>
+        <h1 className="text-2xl font-display font-bold flex items-center gap-2">
+          <Activity className="w-6 h-6 text-primary" />
+          Sequences
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Monitor active automations and manage sequence templates.
+        </p>
+      </div>
+
+      <Tabs defaultValue="active">
+        <TabsList className="mb-4">
+          <TabsTrigger value="active">Active Automations</TabsTrigger>
+          <TabsTrigger value="templates">Sequence Templates</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="active">
+          <ActiveAutomationsTab />
+        </TabsContent>
+
+        <TabsContent value="templates">
+          <SequenceTemplatesTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

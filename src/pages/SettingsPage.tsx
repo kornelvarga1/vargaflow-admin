@@ -1,208 +1,384 @@
 import { useState, useEffect } from "react";
-import { useCustomValues, useUpdateCustomValue, type CustomValue } from "@/hooks/useCustomValues";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Globe, Link2, Share2, Check, Loader2, Zap, Phone, Mail, Eye, EyeOff } from "lucide-react";
+import { Check, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-const categoryIcons: Record<string, typeof Settings> = {
-  general: Settings,
-  links: Link2,
-  social: Share2,
-  automation_links: Zap,
-  twilio: Phone,
-  email: Mail,
-};
+// ---- My Settings Tab ----
 
-const categoryLabels: Record<string, string> = {
-  general: "General Information",
-  links: "Links & URLs",
-  social: "Social Media",
-  automation_links: "Automation Links",
-  twilio: "Twilio / Messaging",
-  email: "Email / Resend",
-};
+const SETTINGS_FIELDS: { key: string; label: string }[] = [
+  { key: "my_name", label: "My Name" },
+  { key: "my_phone", label: "My Phone" },
+  { key: "my_email", label: "My Email" },
+  { key: "company_name", label: "Company Name" },
+  { key: "website_url", label: "Website URL" },
+  { key: "twilio_phone_number", label: "Twilio Phone Number" },
+  { key: "gmb_review_link", label: "GMB Review Link" },
+  { key: "quote_form_link", label: "Quote Form Link" },
+  { key: "marketing_form_link", label: "Marketing Form Link" },
+  { key: "brand_color", label: "Brand Color" },
+  { key: "instagram_url", label: "Instagram URL" },
+  { key: "software_explanation_video", label: "Software Explanation Video" },
+  { key: "testimonials_link", label: "Testimonials Link" },
+  { key: "case_study_link", label: "Case Study Link" },
+  { key: "demo_calendar_link", label: "Demo Calendar Link" },
+  { key: "launch_call_calendar_link", label: "Launch Call Calendar Link" },
+  { key: "onboarding_form_link", label: "Onboarding Form Link" },
+];
 
-const SENSITIVE_KEYS = new Set([
-  "twilio_sid",
-  "twilio_auth_token",
-  "resend_api_key",
-]);
+function useMySettings() {
+  return useQuery({
+    queryKey: ["my_settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("settings")
+        .select("*")
+        .limit(1)
+        .single();
+      if (error && error.code !== "PGRST116") throw error;
+      return data as Record<string, string> | null;
+    },
+  });
+}
 
-export default function SettingsPage() {
-  const { data: customValues, isLoading } = useCustomValues();
-  const updateMutation = useUpdateCustomValue();
-  const [localValues, setLocalValues] = useState<Record<string, string>>({});
-  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set());
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
+function MySettingsTab() {
+  const qc = useQueryClient();
+  const { data: settings, isLoading } = useMySettings();
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (customValues) {
-      const vals: Record<string, string> = {};
-      customValues.forEach((v) => (vals[v.id] = v.value));
-      setLocalValues(vals);
-    }
-  }, [customValues]);
+    const vals: Record<string, string> = {};
+    SETTINGS_FIELDS.forEach(({ key }) => {
+      vals[key] = (settings as any)?.[key] ?? "";
+    });
+    setForm(vals);
+  }, [settings]);
 
-  const handleChange = (id: string, value: string) => {
-    setLocalValues((prev) => ({ ...prev, [id]: value }));
-    setDirtyKeys((prev) => new Set(prev).add(id));
+  const handleSaveAll = async () => {
+    setSaving(true);
+    try {
+      const payload: Record<string, string> = {};
+      SETTINGS_FIELDS.forEach(({ key }) => { payload[key] = form[key] ?? ""; });
+
+      if ((settings as any)?.id) {
+        const { error } = await supabase
+          .from("settings")
+          .update(payload as any)
+          .eq("id", (settings as any).id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("settings")
+          .insert(payload as any);
+        if (error) throw error;
+      }
+      qc.invalidateQueries({ queryKey: ["my_settings"] });
+      toast.success("Settings saved");
+    } catch {
+      toast.error("Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {SETTINGS_FIELDS.map(({ key, label }) => (
+        <div key={key} className="space-y-1.5">
+          <Label className="text-sm text-muted-foreground">{label}</Label>
+          <Input
+            value={form[key] ?? ""}
+            onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
+            placeholder={`Enter ${label.toLowerCase()}...`}
+            className="bg-secondary border-border"
+          />
+        </div>
+      ))}
+      <div className="pt-2">
+        <Button
+          onClick={handleSaveAll}
+          disabled={saving}
+          className="gradient-primary text-primary-foreground"
+        >
+          {saving ? (
+            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+          ) : (
+            <Check className="w-4 h-4 mr-1.5" />
+          )}
+          Save All
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Custom Values Tab ----
+
+interface CustomValue {
+  id: string;
+  key: string;
+  label: string;
+  value: string;
+  category: string;
+  sort_order: number;
+}
+
+function useAllCustomValues() {
+  return useQuery({
+    queryKey: ["all_custom_values"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("custom_values")
+        .select("*")
+        .order("sort_order");
+      if (error) throw error;
+      return data as CustomValue[];
+    },
+  });
+}
+
+function CustomValuesTab() {
+  const qc = useQueryClient();
+  const { data: values, isLoading } = useAllCustomValues();
+  const [localValues, setLocalValues] = useState<Record<string, string>>({});
+  const [localLabels, setLocalLabels] = useState<Record<string, string>>({});
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newKey, setNewKey] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    if (values) {
+      const vals: Record<string, string> = {};
+      const labs: Record<string, string> = {};
+      values.forEach((v) => {
+        vals[v.id] = v.value;
+        labs[v.id] = v.label;
+      });
+      setLocalValues(vals);
+      setLocalLabels(labs);
+      setDirtyIds(new Set());
+    }
+  }, [values]);
+
+  const markDirty = (id: string) =>
+    setDirtyIds((prev) => new Set(prev).add(id));
 
   const handleSave = async (id: string) => {
     try {
-      await updateMutation.mutateAsync({ id, value: localValues[id] || "" });
-      setDirtyKeys((prev) => {
+      const { error } = await supabase
+        .from("custom_values")
+        .update({ value: localValues[id] ?? "", label: localLabels[id] ?? "" } as any)
+        .eq("id", id);
+      if (error) throw error;
+      setDirtyIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
-      toast.success("Saved!");
+      qc.invalidateQueries({ queryKey: ["all_custom_values"] });
+      toast.success("Saved");
     } catch {
       toast.error("Failed to save");
     }
   };
 
-  const handleSaveAll = async () => {
-    const dirty = Array.from(dirtyKeys);
-    if (dirty.length === 0) {
-      toast.info("No changes to save");
-      return;
-    }
+  const handleDelete = async (id: string) => {
     try {
-      await Promise.all(
-        dirty.map((id) =>
-          updateMutation.mutateAsync({ id, value: localValues[id] || "" })
-        )
-      );
-      setDirtyKeys(new Set());
-      toast.success(`Saved ${dirty.length} change(s)`);
+      const { error } = await supabase
+        .from("custom_values")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["all_custom_values"] });
+      toast.success("Deleted");
     } catch {
-      toast.error("Failed to save some values");
+      toast.error("Failed to delete");
     }
   };
 
-  const toggleVisibility = (key: string) => {
-    setVisibleKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const handleAdd = async () => {
+    if (!newLabel.trim() || !newKey.trim()) {
+      toast.error("Label and key are required");
+      return;
+    }
+    setAdding(true);
+    try {
+      const { error } = await supabase
+        .from("custom_values")
+        .insert({ label: newLabel.trim(), key: newKey.trim(), value: "" } as any);
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["all_custom_values"] });
+      setNewLabel("");
+      setNewKey("");
+      setShowAddForm(false);
+      toast.success("Value added");
+    } catch {
+      toast.error("Failed to add value");
+    } finally {
+      setAdding(false);
+    }
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      <div className="flex justify-center py-12">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
-  const grouped = (customValues || []).reduce<Record<string, CustomValue[]>>(
-    (acc, v) => {
-      (acc[v.category] = acc[v.category] || []).push(v);
-      return acc;
-    },
-    {}
+  return (
+    <div className="space-y-3">
+      {(!values || values.length === 0) && (
+        <p className="text-sm text-muted-foreground py-2">No custom values yet.</p>
+      )}
+      {(values || []).map((item) => (
+        <div key={item.id} className="flex gap-2 items-center">
+          <Input
+            value={localLabels[item.id] ?? ""}
+            onChange={(e) => {
+              setLocalLabels((prev) => ({ ...prev, [item.id]: e.target.value }));
+              markDirty(item.id);
+            }}
+            placeholder="Label"
+            className="bg-secondary border-border w-40 shrink-0 text-sm"
+          />
+          <code className="text-[10px] font-mono text-muted-foreground/60 shrink-0 hidden sm:block w-32 truncate">
+            {`{{${item.key}}}`}
+          </code>
+          <Input
+            value={localValues[item.id] ?? ""}
+            onChange={(e) => {
+              setLocalValues((prev) => ({ ...prev, [item.id]: e.target.value }));
+              markDirty(item.id);
+            }}
+            placeholder="Value"
+            className="bg-secondary border-border flex-1 text-sm"
+          />
+          {dirtyIds.has(item.id) && (
+            <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => handleSave(item.id)}>
+              <Check className="w-3.5 h-3.5" />
+            </Button>
+          )}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-9 w-9 shrink-0 text-destructive hover:text-destructive"
+            onClick={() => handleDelete(item.id)}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      ))}
+
+      <Separator className="my-4" />
+
+      {showAddForm ? (
+        <div className="space-y-3 p-4 border border-border rounded-lg bg-secondary/30">
+          <div className="flex gap-3">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-sm">Label</Label>
+              <Input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="e.g. Business Name"
+                className="bg-secondary border-border"
+              />
+            </div>
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-sm">Key</Label>
+              <Input
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value)}
+                placeholder="e.g. business_name"
+                className="bg-secondary border-border font-mono text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={handleAdd}
+              disabled={adding}
+              className="gradient-primary text-primary-foreground"
+            >
+              {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              <span className="ml-1.5">Add</span>
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setShowAddForm(true)}>
+          <Plus className="w-3.5 h-3.5 mr-1.5" />
+          Add New Value
+        </Button>
+      )}
+    </div>
   );
+}
 
-  const categoryOrder = ["general", "automation_links", "links", "social", "twilio", "email"];
+// ---- Page ----
 
+export default function SettingsPage() {
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Custom values are referenced as{" "}
-            <code className="px-1.5 py-0.5 rounded bg-secondary text-accent-foreground text-xs font-mono">
-              {"{{variable_name}}"}
-            </code>{" "}
-            in message templates.
-          </p>
-        </div>
-        <Button
-          onClick={handleSaveAll}
-          disabled={dirtyKeys.size === 0}
-          className="gradient-primary text-primary-foreground"
-        >
-          <Check className="w-4 h-4 mr-1.5" />
-          Save All
-        </Button>
+      <div>
+        <h1 className="text-2xl font-display font-bold">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage your personal settings and custom template variables.
+        </p>
       </div>
 
-      {categoryOrder.map((cat) => {
-        const items = grouped[cat];
-        if (!items || items.length === 0) return null;
-        const Icon = categoryIcons[cat] || Globe;
-        return (
-          <Card key={cat} className="bg-card border-border shadow-card">
+      <Tabs defaultValue="my_settings">
+        <TabsList className="mb-4">
+          <TabsTrigger value="my_settings">My Settings</TabsTrigger>
+          <TabsTrigger value="custom_values">Custom Values</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="my_settings">
+          <Card className="bg-card border-border shadow-card">
             <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base font-display">
-                <Icon className="w-4 h-4 text-accent-foreground" />
-                {categoryLabels[cat] || cat}
-              </CardTitle>
+              <CardTitle className="text-base font-display">My Settings</CardTitle>
             </CardHeader>
             <Separator />
-            <CardContent className="pt-4 space-y-4">
-              {items.map((item) => {
-                const isSensitive = SENSITIVE_KEYS.has(item.key);
-                const isVisible = visibleKeys.has(item.key);
-                return (
-                  <div key={item.id} className="space-y-1.5">
-                    <Label className="text-sm text-muted-foreground flex items-center justify-between">
-                      <span>{item.label}</span>
-                      <code className="text-[10px] font-mono text-muted-foreground/60">
-                        {`{{${item.key}}}`}
-                      </code>
-                    </Label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Input
-                          type={isSensitive && !isVisible ? "password" : "text"}
-                          value={localValues[item.id] ?? ""}
-                          onChange={(e) => handleChange(item.id, e.target.value)}
-                          placeholder={`Enter ${item.label.toLowerCase()}...`}
-                          className="bg-secondary border-border pr-10"
-                        />
-                        {isSensitive && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-0 top-0 h-full w-10"
-                            onClick={() => toggleVisibility(item.key)}
-                          >
-                            {isVisible ? (
-                              <EyeOff className="w-4 h-4 text-muted-foreground" />
-                            ) : (
-                              <Eye className="w-4 h-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                      {dirtyKeys.has(item.id) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSave(item.id)}
-                          className="shrink-0"
-                        >
-                          <Check className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            <CardContent className="pt-4">
+              <MySettingsTab />
             </CardContent>
           </Card>
-        );
-      })}
+        </TabsContent>
+
+        <TabsContent value="custom_values">
+          <Card className="bg-card border-border shadow-card">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-display">Custom Values</CardTitle>
+            </CardHeader>
+            <Separator />
+            <CardContent className="pt-4">
+              <CustomValuesTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

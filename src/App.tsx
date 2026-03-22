@@ -11,6 +11,7 @@ import OnboardingPipelinePage from "./pages/OnboardingPipelinePage";
 import SequencesPage from "./pages/SequencesPage";
 import MessageQueuePage from "./pages/MessageQueuePage";
 import ContactProfilePage from "./pages/ContactProfilePage";
+import ClientsPage from "./pages/ClientsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/sequences" element={<SequencesPage />} />
             <Route path="/messages" element={<MessageQueuePage />} />
             <Route path="/contacts/:id" element={<ContactProfilePage />} />
+            <Route path="/clients" element={<ClientsPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>

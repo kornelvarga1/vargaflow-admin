@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Building2, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import logo from "@/assets/logo.png";
 
@@ -11,6 +11,7 @@ const navItems = [
   { to: "/contacts", icon: Users, label: "Contacts" },
   { to: "/sequences", icon: ListChecks, label: "Sequences" },
   { to: "/messages", icon: MessageSquare, label: "Messages" },
+  { to: "/clients", icon: Building2, label: "Clients" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

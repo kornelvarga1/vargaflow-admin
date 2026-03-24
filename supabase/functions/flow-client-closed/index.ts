@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { contact_id } = await req.json();
+    const { contact_id, business_id } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -26,20 +26,25 @@ serve(async (req) => {
 
     if (error || !contact) throw new Error("Contact not found");
 
-    const settings = await getSettings(supabase);
+    const bid = business_id ?? contact.business_id;
+    const settings = await getSettings(supabase, bid);
+
+    const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
+    const updatedTags = currentTags.includes("New Client") ? currentTags : [...currentTags, "New Client"];
 
     await supabase
       .from("contacts")
       .update({
         pipeline: "Onboarding",
         stage: "New Client Waiting for Onboarding Form",
-        tags: "New Client",
+        tags: updatedTags,
       })
       .eq("id", contact.id);
 
     if (settings.my_phone) {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "sms",
         message_content: `🎉 ${contact.full_name} just closed! Moved to onboarding pipeline. Number: ${contact.phone}`,
         scheduled_at: new Date().toISOString(),
@@ -50,6 +55,7 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-client-closed",
       status: "completed",
       ran_at: new Date().toISOString(),

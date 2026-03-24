@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { contact_id } = await req.json();
+    const { contact_id, business_id } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -26,8 +26,11 @@ serve(async (req) => {
 
     if (error || !contact) throw new Error("Contact not found");
 
+    const bid = business_id ?? contact.business_id;
+
     // Check if they still need to fill out the form
-    const stillNeeds = (contact.tags ?? "").includes("Needs to Fill Out Onboarding Form");
+    const tagsArr: string[] = Array.isArray(contact.tags) ? contact.tags : [];
+    const stillNeeds = tagsArr.includes("Needs to Fill Out Onboarding Form");
     if (!stillNeeds) {
       return new Response(
         JSON.stringify({ success: true, skipped: "form already submitted" }),
@@ -35,7 +38,7 @@ serve(async (req) => {
       );
     }
 
-    const settings = await getSettings(supabase);
+    const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
@@ -71,6 +74,7 @@ serve(async (req) => {
     // Send reminder SMS
     await supabase.from("message_queue").insert({
       contact_id: contact.id,
+      business_id: bid,
       message_type: "sms",
       message_content: `Hey ${firstName}, super friendly but important reminder to please fill out your onboarding info. Here's the form: ${onboardingFormLink} — ${myName}. PS: I just re-emailed the onboarding info to your email.`,
       scheduled_at: new Date(Date.now() + 60 * 1000).toISOString(),
@@ -81,15 +85,17 @@ serve(async (req) => {
     // Schedule next reminder in 48 hours if still not done
     await supabase.from("message_queue").insert({
       contact_id: contact.id,
-      message_type: "sms",
-      message_content: `INTERNAL_TRIGGER:flow-ob-form-reminder`,
+      business_id: bid,
+      message_type: "function_call",
+      message_content: `FUNCTION_CALL:flow-ob-form-reminder`,
       scheduled_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
       status: "pending",
-      metadata: { to: "internal", trigger_flow: "flow-ob-form-reminder", contact_id: contact.id },
+      metadata: { function_name: "flow-ob-form-reminder", payload: { contact_id: contact.id, business_id: bid } },
     });
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-ob-form-reminder",
       status: "completed",
       ran_at: new Date().toISOString(),

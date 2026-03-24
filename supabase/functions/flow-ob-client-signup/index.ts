@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { contact_id } = await req.json();
+    const { contact_id, business_id } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -26,7 +26,8 @@ serve(async (req) => {
 
     if (error || !contact) throw new Error("Contact not found");
 
-    const settings = await getSettings(supabase);
+    const bid = business_id ?? contact.business_id;
+    const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myPhone = settings.my_phone || "";
     const myEmail = settings.my_email || "hello@vargaflow.com";
@@ -85,6 +86,7 @@ serve(async (req) => {
     // SMS 2 — Check email (10 sec later via queue)
     await supabase.from("message_queue").insert({
       contact_id: contact.id,
+      business_id: bid,
       message_type: "sms",
       message_content: `We just sent your onboarding information to your email. Please let us know when you receive it. PS: check your junk/spam just in case! — ${companyName}`,
       scheduled_at: new Date(Date.now() + 10 * 1000).toISOString(),
@@ -100,17 +102,21 @@ serve(async (req) => {
       );
     }
 
+    const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
+    const updatedTags = currentTags.includes("Needs to Fill Out Onboarding Form") ? currentTags : [...currentTags, "Needs to Fill Out Onboarding Form"];
+
     await supabase
       .from("contacts")
       .update({
         pipeline: "Onboarding",
         stage: "New Client Waiting for Onboarding Form",
-        tags: "Needs to Fill Out Onboarding Form",
+        tags: updatedTags,
       })
       .eq("id", contact.id);
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-ob-client-signup",
       status: "completed",
       ran_at: new Date().toISOString(),

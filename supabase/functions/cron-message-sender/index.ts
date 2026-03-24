@@ -155,7 +155,7 @@ serve(async (_req) => {
           }
 
         } else if (msg.message_type === "email") {
-          const to = msg.to_phone ?? msg.metadata?.to;
+          const to = msg.metadata?.to ?? msg.to_phone;
           const subject = msg.metadata?.subject ?? "Message from your contractor";
           const fromEmail = msg.metadata?.from_email ?? "hello@vargaflow.com";
           if (!to) throw new Error(`No email address for message ${msg.id}`);

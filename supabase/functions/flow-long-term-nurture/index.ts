@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { contact_id } = await req.json();
+    const { contact_id, business_id } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -26,17 +26,22 @@ serve(async (req) => {
 
     if (error || !contact) throw new Error("Contact not found");
 
-    const settings = await getSettings(supabase);
+    const bid = business_id ?? contact.business_id;
+    const settings = await getSettings(supabase, bid);
     const steps = await getSequenceSteps(supabase, "Flow #5 — Long Term Nurture");
-    await queueSteps(supabase, contact.id, steps, contact, settings);
+    await queueSteps(supabase, contact.id, steps, contact, settings, bid);
+
+    const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
+    const updatedTags = currentTags.includes("Long-Term Nurture") ? currentTags : [...currentTags, "Long-Term Nurture"];
 
     await supabase
       .from("contacts")
-      .update({ tags: "Long-Term Nurture", stage: "No Contact → Long Term Nurture" })
+      .update({ tags: updatedTags, stage: "No Contact → Long Term Nurture" })
       .eq("id", contact.id);
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-long-term-nurture",
       status: "queued",
       ran_at: new Date().toISOString(),

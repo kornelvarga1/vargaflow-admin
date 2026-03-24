@@ -12,7 +12,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { contact_id, appointment_time, meeting_link } = body;
+    const { contact_id, appointment_time, meeting_link, business_id } = body;
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -27,7 +27,8 @@ serve(async (req) => {
 
     if (error || !contact) throw new Error("Contact not found");
 
-    const settings = await getSettings(supabase);
+    const bid = business_id ?? contact.business_id;
+    const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myPhone = settings.my_phone || "";
     const companyName = settings.company_name || "Local Scaling";
@@ -46,6 +47,7 @@ serve(async (req) => {
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "sms",
         message_content: body,
         scheduled_at: scheduledAt.toISOString(),
@@ -57,6 +59,7 @@ serve(async (req) => {
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "email",
         message_content: html,
         scheduled_at: scheduledAt.toISOString(),
@@ -74,6 +77,7 @@ serve(async (req) => {
     if (myPhone) {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "sms",
         message_content: `🚀 Launch call booked by ${contact.full_name}. They just booked for ${apptTime}. Remember to quality check their account before the call!`,
         scheduled_at: new Date().toISOString(),
@@ -85,6 +89,7 @@ serve(async (req) => {
     // Immediately: confirmation SMS to client
     await supabase.from("message_queue").insert({
       contact_id: contact.id,
+      business_id: bid,
       message_type: "sms",
       message_content: `Hey ${firstName}, your launch call with ${myName} has been booked for ${apptTime}. This will be a 20-30 minute walkthrough of your new website + marketing systems. Please join on a computer — it will make everything much easier. Talk soon! — ${myName}`,
       scheduled_at: new Date().toISOString(),
@@ -167,6 +172,7 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-ob-launch-call",
       status: "completed",
       ran_at: new Date().toISOString(),

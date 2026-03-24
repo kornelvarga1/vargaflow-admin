@@ -11,7 +11,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { contact_id } = await req.json();
+    const { contact_id, business_id } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -26,7 +26,8 @@ serve(async (req) => {
 
     if (error || !contact) throw new Error("Contact not found");
 
-    const settings = await getSettings(supabase);
+    const bid = business_id ?? contact.business_id;
+    const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myPhone = settings.my_phone || "";
 
@@ -34,21 +35,19 @@ serve(async (req) => {
     const phone = contact.phone;
 
     // Remove onboarding form tag
-    const currentTags = (contact.tags ?? "")
-      .split(",")
-      .map((t: string) => t.trim())
-      .filter((t: string) => t !== "Needs to Fill Out Onboarding Form")
-      .join(", ");
+    const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
+    const updatedTags = currentTags.filter((t: string) => t !== "Needs to Fill Out Onboarding Form");
 
     await supabase
       .from("contacts")
-      .update({ tags: currentTags, stage: "Form Submitted" })
+      .update({ tags: updatedTags, stage: "Form Submitted" })
       .eq("id", contact.id);
 
     // Internal notification
     if (myPhone) {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "sms",
         message_content: `${contact.full_name} just submitted their onboarding form. Email: ${contact.email}. Phone: ${phone}`,
         scheduled_at: new Date(Date.now() + 30 * 1000).toISOString(),
@@ -60,6 +59,7 @@ serve(async (req) => {
     // SMS to client — GMB access request
     await supabase.from("message_queue").insert({
       contact_id: contact.id,
+      business_id: bid,
       message_type: "sms",
       message_content: `${firstName}, thank you for submitting your onboarding form! Next step — please provide us manager access to your Google My Business page. Here's a 2-minute video tutorial on how to do this: [GMB tutorial link] — ${myName}`,
       scheduled_at: new Date(Date.now() + 60 * 1000).toISOString(),
@@ -69,6 +69,7 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-ob-form-submitted",
       status: "completed",
       ran_at: new Date().toISOString(),

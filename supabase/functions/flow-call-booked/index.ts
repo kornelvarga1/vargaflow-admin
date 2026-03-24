@@ -13,6 +13,7 @@ serve(async (req) => {
     const body = await req.json();
 
     const event = body.payload ?? body;
+    const businessId = body.business_id ?? event.business_id;
     const eventId = event.uri ?? event.uuid ?? crypto.randomUUID();
     const invitee = event.invitee ?? {};
     const eventTime = event.event?.start_time ?? event.start_time;
@@ -55,6 +56,7 @@ serve(async (req) => {
           full_name: contactName,
           email: contactEmail,
           phone: contactPhone,
+          business_id: businessId,
           pipeline: "Sales",
           stage: "Zoom Call Booked",
         })
@@ -63,6 +65,8 @@ serve(async (req) => {
       if (insertError) throw new Error(`Contact error: ${insertError.message}`);
       contact = newContact;
     }
+
+    const bid = businessId ?? contact.business_id;
 
     await supabase
       .from("contacts")
@@ -73,6 +77,7 @@ serve(async (req) => {
     const { data: settings, error: settingsError } = await supabase
       .from("settings")
       .select("*")
+      .eq("business_id", bid)
       .single();
     if (settingsError) throw new Error(`Settings error: ${settingsError.message}`);
 
@@ -125,6 +130,7 @@ serve(async (req) => {
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "sms",
         message_content: body,
         scheduled_at: scheduledAt.toISOString(),
@@ -136,6 +142,7 @@ serve(async (req) => {
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
+        business_id: bid,
         message_type: "email",
         message_content: html,
         scheduled_at: scheduledAt.toISOString(),
@@ -150,7 +157,8 @@ serve(async (req) => {
       .eq("id", contact.id)
       .single();
 
-    const hasBookedTag = (tags?.tags ?? "").includes("Booked");
+    const tagsArr: string[] = Array.isArray(tags?.tags) ? tags.tags : [];
+    const hasBookedTag = tagsArr.includes("Booked");
     const meetingDate = eventTime ? new Date(eventTime) : new Date();
 
     // Step 1: Confirmation SMS immediately
@@ -169,7 +177,8 @@ serve(async (req) => {
 
     if (!hasBookedTag) {
       // YES BRANCH — First time booker
-      await supabase.from("contacts").update({ tags: "Booked" }).eq("id", contact.id);
+      const updatedTags = tagsArr.includes("Booked") ? tagsArr : [...tagsArr, "Booked"];
+      await supabase.from("contacts").update({ tags: updatedTags }).eq("id", contact.id);
 
       await sendEmail(
         contactEmail,
@@ -324,6 +333,7 @@ serve(async (req) => {
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
+      business_id: bid,
       flow: "flow-call-booked",
       status: "completed",
       ran_at: new Date().toISOString(),

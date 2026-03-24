@@ -1,9 +1,10 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export async function getSettings(supabase: SupabaseClient) {
+export async function getSettings(supabase: SupabaseClient, businessId: string) {
   const { data, error } = await supabase
     .from("settings")
     .select("*")
+    .eq("business_id", businessId)
     .single();
   if (error) throw new Error(`Settings fetch error: ${error.message}`);
   return data;
@@ -39,7 +40,7 @@ export function resolveTemplate(
     contact_name: contact.full_name ?? "",
     contact_phone: contact.phone ?? "",
     contact_email: contact.email ?? "",
-    contact_company: contact.company_name ?? "",
+    contact_company: settings.company_name ?? "",
     my_name: settings.my_name ?? "",
     my_phone: settings.my_phone ?? "",
     my_email: settings.my_email ?? "",
@@ -62,7 +63,8 @@ export async function queueSteps(
   contactId: string,
   steps: any[],
   contact: Record<string, any>,
-  settings: Record<string, any>
+  settings: Record<string, any>,
+  businessId: string
 ) {
   if (steps.length === 0) return;
 
@@ -75,10 +77,12 @@ export async function queueSteps(
 
     return {
       contact_id: contactId,
+      business_id: businessId,
       message_type: step.message_type,
       message_content: resolveTemplate(step.message_template, contact, settings),
       scheduled_at: sendAt.toISOString(),
       status: "pending",
+      metadata: { to: contact.phone },
     };
   });
 

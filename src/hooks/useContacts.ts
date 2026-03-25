@@ -8,28 +8,28 @@ export type ContactInsert = TablesInsert<"contacts">;
 export type ContactUpdate = TablesUpdate<"contacts">;
 
 export const SALES_STAGES = [
-  { key: "lead_in", label: "Lead In" },
-  { key: "no_contact_1x", label: "No Contact x1 Text" },
-  { key: "no_contact_2x", label: "No Contact 2x Text" },
-  { key: "no_contact_3x", label: "No Contact 3x Text" },
-  { key: "long_term_nurture", label: "No Contact → Long Term Nurture" },
-  { key: "ready_to_close", label: "Ready to Close 🔥" },
-  { key: "zoom_booked", label: "Zoom Call Booked" },
-  { key: "zoom_finished", label: "Zoom Call Finished (Follow Up?)" },
-  { key: "cancelled_reschedule", label: "Cancelled/Reschedule" },
-  { key: "no_showed_zoom", label: "No Showed to Zoom" },
-  { key: "client_closed", label: "Client Closed" },
+  { key: "Lead In", label: "Lead In" },
+  { key: "No Contact x1 Text", label: "No Contact x1 Text" },
+  { key: "No Contact 2x Text", label: "No Contact 2x Text" },
+  { key: "No Contact 3x Text", label: "No Contact 3x Text" },
+  { key: "No Contact → Long Term Nurture", label: "No Contact → Long Term Nurture" },
+  { key: "Ready to Close", label: "Ready to Close 🔥" },
+  { key: "Zoom Call Booked", label: "Zoom Call Booked" },
+  { key: "Zoom Call Finished", label: "Zoom Call Finished (Follow Up?)" },
+  { key: "Cancelled/Rescheduled", label: "Cancelled/Rescheduled" },
+  { key: "No Showed to Zoom", label: "No Showed to Zoom" },
+  { key: "Client Closed", label: "Client Closed" },
 ] as const;
 
 export const ONBOARDING_STAGES = [
-  { key: "waiting_onboarding_form", label: "New Client Waiting for Onboarding Form" },
-  { key: "form_submitted", label: "Form Submitted" },
-  { key: "project_ready", label: "Project Ready to Start" },
-  { key: "launch_call_booked", label: "Launch Call Booked 🚀" },
-  { key: "gmb_issue", label: "GMB Issue / Phone Verification Issue 🚨" },
-  { key: "approved_retainer", label: "Approved - Client on Retainer" },
-  { key: "cc_declined", label: "Credit Card Declined" },
-  { key: "client_churned", label: "Client Churned" },
+  { key: "New Client Waiting for Onboarding Form", label: "New Client Waiting for Onboarding Form" },
+  { key: "Form Submitted", label: "Form Submitted" },
+  { key: "Project Ready to Start", label: "Project Ready to Start" },
+  { key: "Launch Call Booked", label: "Launch Call Booked 🚀" },
+  { key: "GMB Issue", label: "GMB Issue / Phone Verification Issue 🚨" },
+  { key: "Approved Retainer", label: "Approved - Client on Retainer" },
+  { key: "Credit Card Declined", label: "Credit Card Declined" },
+  { key: "Client Churned", label: "Client Churned" },
 ] as const;
 
 export const LEAD_SOURCES = [

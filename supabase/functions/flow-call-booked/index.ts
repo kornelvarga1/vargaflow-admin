@@ -68,6 +68,13 @@ serve(async (req) => {
 
     const bid = businessId ?? contact.business_id;
 
+    // Cancel any pending messages from prior sequences before queuing new ones
+    await supabase
+      .from("message_queue")
+      .update({ status: "cancelled" })
+      .eq("contact_id", contact.id)
+      .eq("status", "pending");
+
     await supabase
       .from("contacts")
       .update({ stage: "Zoom Call Booked" })
@@ -94,7 +101,7 @@ serve(async (req) => {
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
 
     const sendSMS = async (to: string, body: string) => {
-      if (!to) return null;
+      if (!to) return;
       const res = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
         {
@@ -106,11 +113,14 @@ serve(async (req) => {
           body: new URLSearchParams({ To: to, From: twilioFrom, Body: body }),
         }
       );
-      return res.json();
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(`Twilio error: ${data.message ?? res.statusText}`);
+      }
     };
 
     const sendEmail = async (to: string, subject: string, html: string) => {
-      if (!to) return null;
+      if (!to) return;
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -124,10 +134,16 @@ serve(async (req) => {
           html,
         }),
       });
-      return res.json();
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(`Resend error: ${data.message ?? res.statusText}`);
+      }
     };
 
+    const now = Date.now();
+
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
+      if (scheduledAt.getTime() <= now) return; // skip past-time reminders
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
         business_id: bid,
@@ -140,6 +156,7 @@ serve(async (req) => {
     };
 
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
+      if (scheduledAt.getTime() <= now) return; // skip past-time reminders
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
         business_id: bid,

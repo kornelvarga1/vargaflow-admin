@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
-import { useEnrollContact, generateSequenceMessages, useStopContactSequences } from "@/hooks/useSequences";
+import { useStopContactSequences } from "@/hooks/useSequences";
 import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,7 +43,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
       await stopSequences.mutateAsync(contact.id);
       await updateContact.mutateAsync({
         id: contact.id,
-        stage: "lead_responded",
+        stage: "Lead Responded",
         stage_entered_at: new Date().toISOString(),
       });
       await logActivity("marked_replied", "was marked as replied — sequences stopped", contact.id);
@@ -60,28 +60,34 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
     contacts: contacts.filter((c) => c.stage === stage.key),
   }));
 
-  /** Check for active sequences matching a pipeline+stage and enroll the contact */
-  const triggerSequences = async (contactId: string, targetPipeline: string, targetStage: string) => {
-    const { data: activeSeqs } = await supabase
-      .from("sequences")
-      .select("id")
-      .eq("pipeline", targetPipeline)
-      .eq("stage", targetStage)
-      .eq("is_active", true);
+  /** Stage-to-edge-function mapping */
+  const STAGE_FLOW_MAP: Record<string, string> = {
+    "No Contact x1 Text": "flow-no-contact-1",
+    "No Contact 2x Text": "flow-no-contact-2",
+    "No Contact 3x Text": "flow-no-contact-3",
+    "No Contact → Long Term Nurture": "flow-long-term-nurture",
+    "No Showed to Zoom": "flow-no-show",
+    "Cancelled/Rescheduled": "flow-cancelled",
+    "Client Closed": "flow-client-closed",
+    "New Client Waiting for Onboarding Form": "flow-ob-client-signup",
+    "Project Ready to Start": "flow-ob-project-ready",
+  };
 
-    if (activeSeqs && activeSeqs.length > 0) {
-      for (const seq of activeSeqs) {
-        // Enroll
-        const { data: enrollment } = await supabase
-          .from("contact_sequences")
-          .insert({ contact_id: contactId, sequence_id: seq.id, status: "active", current_step: 0 })
-          .select()
-          .single();
-        if (enrollment) {
-          await generateSequenceMessages(contactId, seq.id, enrollment.id);
-        }
-      }
-      toast.info(`Enrolled in ${activeSeqs.length} sequence(s)`, { description: "Check Message Queue for pending messages." });
+  /** Trigger the edge function for the new stage if one exists */
+  const triggerSequences = async (contactId: string, contact: Contact) => {
+    const stage = contact.stage;
+    const flowName = STAGE_FLOW_MAP[stage];
+    if (!flowName) return;
+
+    try {
+      const { error } = await supabase.functions.invoke(flowName, {
+        body: { contact_id: contactId, business_id: contact.business_id },
+      });
+      if (error) throw error;
+      toast.info(`Automation triggered: ${flowName}`, { description: "Check Message Queue for pending messages." });
+    } catch (err) {
+      console.error(`Failed to invoke ${flowName}:`, err);
+      toast.error(`Automation failed: ${flowName}`);
     }
   };
 
@@ -94,18 +100,18 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
 
     try {
       // Auto-move to onboarding when dropped in "Closed / Won"
-      if (pipeline === "sales" && newStage === "client_closed") {
+      if (pipeline === "Sales" && newStage === "Client Closed") {
         await updateContact.mutateAsync({
           id: contactId,
-          pipeline: "onboarding",
-          stage: "waiting_onboarding_form",
+          pipeline: "Onboarding",
+          stage: "New Client Waiting for Onboarding Form",
           stage_entered_at: new Date().toISOString(),
         });
         toast.success(`${contact.full_name} → Onboarding`, {
           description: "Automatically moved to onboarding pipeline.",
         });
         await logActivity("stage_changed", `moved to Onboarding → Waiting for Onboarding Form`, contactId);
-        await triggerSequences(contactId, "onboarding", "waiting_onboarding_form");
+        await triggerSequences(contactId, contact);
       } else {
         await updateContact.mutateAsync({
           id: contactId,
@@ -115,7 +121,8 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
         const stageLabel = stages.find((s) => s.key === newStage)?.label || newStage;
         toast.success(`${contact.full_name} → ${stageLabel}`);
         await logActivity("stage_changed", `moved to ${stageLabel}`, contactId);
-        await triggerSequences(contactId, pipeline, newStage);
+        // Trigger with updated stage
+        await triggerSequences(contactId, { ...contact, stage: newStage });
       }
     } catch {
       toast.error("Failed to move contact");
@@ -196,7 +203,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center justify-between">
                                       <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
-                                      {pipeline === "sales" && contact.stage !== "lead_responded" && (
+                                      {pipeline === "Sales" && contact.stage !== "Lead Responded" && (
                                         <DropdownMenu>
                                           <DropdownMenuTrigger asChild>
                                             <Button

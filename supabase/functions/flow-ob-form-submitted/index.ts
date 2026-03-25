@@ -30,6 +30,7 @@ serve(async (req) => {
     const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myPhone = settings.my_phone || "";
+    const gmbReviewLink = settings.gmb_review_link || "[GMB tutorial link]";
 
     const firstName = contact.full_name?.split(" ")[0] ?? "there";
     const phone = contact.phone;
@@ -61,7 +62,7 @@ serve(async (req) => {
       contact_id: contact.id,
       business_id: bid,
       message_type: "sms",
-      message_content: `${firstName}, thank you for submitting your onboarding form! Next step — please provide us manager access to your Google My Business page. Here's a 2-minute video tutorial on how to do this: [GMB tutorial link] — ${myName}`,
+      message_content: `${firstName}, thank you for submitting your onboarding form! Next step — please provide us manager access to your Google My Business page. Here's a 2-minute video tutorial on how to do this: ${gmbReviewLink} — ${myName}`,
       scheduled_at: new Date(Date.now() + 60 * 1000).toISOString(),
       status: "pending",
       metadata: { to: phone },

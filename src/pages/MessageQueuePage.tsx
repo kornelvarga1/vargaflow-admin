@@ -25,8 +25,8 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
 const ALL_STAGES = [
-  ...SALES_STAGES.map((s) => ({ ...s, pipeline: "sales" })),
-  ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "onboarding" })),
+  ...SALES_STAGES.map((s) => ({ ...s, pipeline: "Sales" })),
+  ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "Onboarding" })),
 ];
 
 type ConversationContact = {
@@ -58,42 +58,43 @@ function useConversationContacts() {
   return useQuery({
     queryKey: ["conversation_contacts"],
     queryFn: async () => {
-      // Get all messages grouped by contact
-      const { data: messages, error } = await supabase
+      // Get distinct contacts that have messages, with their latest message
+      // Use RPC-style: fetch contacts that have messages, ordered by latest message
+      const { data: contacts, error: contactsError } = await supabase
+        .from("contacts")
+        .select("id, full_name, phone, pipeline, stage, business_id");
+      if (contactsError) throw contactsError;
+      if (!contacts || contacts.length === 0) return [];
+
+      const contactIds = contacts.map((c) => c.id);
+
+      // Fetch only the most recent message per contact by getting
+      // a limited set ordered desc and deduping client-side
+      const { data: recentMessages, error } = await supabase
         .from("message_queue")
-        .select("contact_id, message_content, scheduled_at, sent_at, status, message_type, created_at")
-        .order("scheduled_at", { ascending: false });
+        .select("contact_id, message_content, scheduled_at, sent_at, status")
+        .in("contact_id", contactIds)
+        .order("scheduled_at", { ascending: false })
+        .limit(500);
 
       if (error) throw error;
 
-      // Get all contacts that have messages
-      const contactIds = [...new Set((messages || []).map((m) => m.contact_id))];
-      if (contactIds.length === 0) return [];
+      // Build latest-per-contact map
+      const latestByContact = new Map<string, typeof recentMessages[0]>();
+      for (const msg of recentMessages || []) {
+        if (!latestByContact.has(msg.contact_id)) {
+          latestByContact.set(msg.contact_id, msg);
+        }
+      }
 
-      const { data: contacts } = await supabase
-        .from("contacts")
-        .select("id, full_name, phone, pipeline, stage")
-        .in("id", contactIds);
-
-      if (!contacts) return [];
-
-      // Build conversation list
+      // Only include contacts that have messages
       const contactMap = new Map(contacts.map((c) => [c.id, c]));
       const convos: ConversationContact[] = [];
 
-      const groupedByContact = new Map<string, typeof messages>();
-      for (const msg of messages || []) {
-        if (!groupedByContact.has(msg.contact_id)) {
-          groupedByContact.set(msg.contact_id, []);
-        }
-        groupedByContact.get(msg.contact_id)!.push(msg);
-      }
-
-      for (const [contactId, msgs] of groupedByContact) {
+      for (const [contactId, latest] of latestByContact) {
         const contact = contactMap.get(contactId);
         if (!contact) continue;
 
-        const latest = msgs[0]; // already sorted desc
         convos.push({
           id: contact.id,
           full_name: contact.full_name,
@@ -102,14 +103,12 @@ function useConversationContacts() {
           stage: contact.stage,
           lastMessage: latest.message_content.slice(0, 60) + (latest.message_content.length > 60 ? "…" : ""),
           lastMessageAt: latest.sent_at || latest.scheduled_at,
-          hasUnread: false, // Will be true when inbound messages exist
-          messageCount: msgs.length,
+          hasUnread: false,
+          messageCount: 0,
         });
       }
 
-      // Sort by most recent message
       convos.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-
       return convos;
     },
     refetchInterval: 15000,
@@ -329,7 +328,7 @@ export default function MessageQueuePage() {
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">
-                        {selectedContact.pipeline === "onboarding" ? "Onboarding" : "Sales"}
+                        {selectedContact.pipeline === "Onboarding" ? "Onboarding" : "Sales"}
                       </Badge>
                       <Badge variant="secondary" className="text-[10px]">
                         {stageLabel(selectedContact.stage, selectedContact.pipeline)}
@@ -444,12 +443,22 @@ function ComposeBar({
     if (!text.trim()) return;
     setSending(true);
     try {
+      // Fetch business_id for the contact
+      const { data: contactData } = await supabase
+        .from("contacts")
+        .select("business_id")
+        .eq("id", contactId)
+        .single();
+
       const { error } = await supabase.from("message_queue").insert({
         contact_id: contactId,
         message_content: text.trim(),
         message_type: "sms",
         scheduled_at: new Date().toISOString(),
         status: "pending",
+        to_phone: contactPhone,
+        business_id: contactData?.business_id ?? null,
+        metadata: { to: contactPhone },
       });
       if (error) throw error;
 

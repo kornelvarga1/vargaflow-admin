@@ -14,23 +14,22 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: ["dashboard_stats"],
     queryFn: async () => {
-      const [contactsRes, messagesRes, sequencesRes] = await Promise.all([
+      const [contactsRes, messagesRes, activeEnrollmentsRes] = await Promise.all([
         supabase.from("contacts").select("pipeline, stage"),
         supabase.from("message_queue").select("status"),
-        supabase.from("sequences").select("is_active"),
+        supabase.from("contact_sequences").select("id", { count: "exact", head: true }).eq("status", "active"),
       ]);
 
       const contacts = contactsRes.data || [];
       const messages = messagesRes.data || [];
-      const sequences = sequencesRes.data || [];
 
       const salesByStage: Record<string, number> = {};
       const onboardingByStage: Record<string, number> = {};
 
       for (const c of contacts) {
-        if (c.pipeline === "sales") {
+        if (c.pipeline === "Sales") {
           salesByStage[c.stage] = (salesByStage[c.stage] || 0) + 1;
-        } else if (c.pipeline === "onboarding") {
+        } else if (c.pipeline === "Onboarding") {
           onboardingByStage[c.stage] = (onboardingByStage[c.stage] || 0) + 1;
         }
       }
@@ -41,7 +40,7 @@ export function useDashboardStats() {
         onboardingByStage,
         pendingMessages: messages.filter((m) => m.status === "pending").length,
         sentMessages: messages.filter((m) => m.status === "sent").length,
-        activeSequences: sequences.filter((s) => s.is_active).length,
+        activeSequences: activeEnrollmentsRes.count ?? 0,
       } as DashboardStats;
     },
     refetchInterval: 30000, // refresh every 30s

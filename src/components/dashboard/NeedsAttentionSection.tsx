@@ -18,8 +18,8 @@ import {
 import { differenceInDays, formatDistanceToNow } from "date-fns";
 
 const ALL_STAGES = [
-  ...SALES_STAGES.map((s) => ({ ...s, pipeline: "sales" })),
-  ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "onboarding" })),
+  ...SALES_STAGES.map((s) => ({ ...s, pipeline: "Sales" })),
+  ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "Onboarding" })),
 ];
 
 interface AttentionItem {
@@ -56,27 +56,28 @@ function useNeedsAttention() {
       const now = new Date();
 
       // No-showed Zoom contacts
-      const noShowed = contacts.filter((c) => c.stage === "no_showed_zoom");
+      const noShowed = contacts.filter((c) => c.stage === "No Showed to Zoom");
       for (const c of noShowed) {
         items.push({
           id: `noshow-${c.id}`,
           contactId: c.id,
           contactName: c.full_name,
           type: "no_show",
-          description: `No-showed Zoom — ${formatDistanceToNow(new Date(c.stage_entered_at), { addSuffix: true })}`,
+          description: c.stage_entered_at
+            ? `No-showed Zoom — ${formatDistanceToNow(new Date(c.stage_entered_at), { addSuffix: true })}`
+            : "No-showed Zoom",
           timestamp: c.stage_entered_at,
         });
       }
 
       // Stale contacts (same stage for 5+ days)
+      const terminalStages = ["Client Closed", "Client Churned", "Approved Retainer"];
       for (const c of contacts) {
+        if (!c.stage_entered_at) continue;
         const days = differenceInDays(now, new Date(c.stage_entered_at));
         if (days >= 5) {
-          // Skip terminal stages
-          const terminalStages = ["client_closed", "client_churned", "approved_retainer"];
           if (terminalStages.includes(c.stage)) continue;
-          // Skip if already in no_show list
-          if (c.stage === "no_showed_zoom") continue;
+          if (c.stage === "No Showed to Zoom") continue;
 
           const stageLabel = ALL_STAGES.find((s) => s.key === c.stage && s.pipeline === c.pipeline)?.label || c.stage;
           items.push({

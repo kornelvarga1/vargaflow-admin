@@ -2,18 +2,18 @@ import { useContacts, ONBOARDING_STAGES } from "@/hooks/useContacts";
 import KanbanBoard from "@/components/pipeline/KanbanBoard";
 
 export default function OnboardingPipelinePage() {
-  const { data: contacts = [], isLoading } = useContacts("onboarding");
+  const { data: contacts = [], isLoading } = useContacts("Onboarding");
 
   return (
     <KanbanBoard
       title="Client Onboarding"
       subtitle={`${contacts.length} clients in onboarding`}
       addLabel="Add Client"
-      pipeline="onboarding"
+      pipeline="Onboarding"
       stages={ONBOARDING_STAGES}
       contacts={contacts}
       isLoading={isLoading}
-      defaultAddStage="waiting_onboarding_form"
+      defaultAddStage="New Client Waiting for Onboarding Form"
     />
   );
 }

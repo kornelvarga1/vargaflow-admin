@@ -39,8 +39,8 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
 const ALL_STAGES = [
-  ...SALES_STAGES.map((s) => ({ ...s, pipeline: "sales" as const })),
-  ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "onboarding" as const })),
+  ...SALES_STAGES.map((s) => ({ ...s, pipeline: "Sales" as const })),
+  ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "Onboarding" as const })),
 ];
 
 function getStageLabel(key: string, pipeline?: string) {
@@ -183,7 +183,7 @@ export default function ContactProfilePage() {
   }
 
   const stageLabel = getStageLabel(contact.stage, contact.pipeline);
-  const pipelineLabel = contact.pipeline === "onboarding" ? "Onboarding" : "Sales";
+  const pipelineLabel = contact.pipeline === "Onboarding" ? "Onboarding" : "Sales";
   const activeSeqs = sequences.filter((s: any) => s.status === "active");
 
   // Merge activities and sent messages into a unified timeline
@@ -224,10 +224,19 @@ export default function ContactProfilePage() {
       .update({ status: "stopped" })
       .eq("id", csId);
     if (error) { toast.error("Failed to cancel"); return; }
+    // Cancel messages linked to this specific sequence
     await supabase
       .from("message_queue")
       .update({ status: "cancelled" })
       .eq("contact_sequence_id", csId)
+      .eq("status", "pending");
+    // Also cancel any pending messages for this contact without a contact_sequence_id
+    // (queued by edge functions via queueSteps which don't set contact_sequence_id)
+    await supabase
+      .from("message_queue")
+      .update({ status: "cancelled" })
+      .eq("contact_id", contact.id)
+      .is("contact_sequence_id", null)
       .eq("status", "pending");
     qc.invalidateQueries({ queryKey: ["contact_active_sequences"] });
     qc.invalidateQueries({ queryKey: ["contact_messages"] });
@@ -445,6 +454,18 @@ export default function ContactProfilePage() {
 
 // --- Move Stage Dialog ---
 
+const STAGE_FLOW_MAP: Record<string, string> = {
+  "No Contact x1 Text": "flow-no-contact-1",
+  "No Contact 2x Text": "flow-no-contact-2",
+  "No Contact 3x Text": "flow-no-contact-3",
+  "No Contact → Long Term Nurture": "flow-long-term-nurture",
+  "No Showed to Zoom": "flow-no-show",
+  "Cancelled/Rescheduled": "flow-cancelled",
+  "Client Closed": "flow-client-closed",
+  "New Client Waiting for Onboarding Form": "flow-ob-client-signup",
+  "Project Ready to Start": "flow-ob-project-ready",
+};
+
 function MoveStageDialog({
   open,
   onOpenChange,
@@ -456,7 +477,7 @@ function MoveStageDialog({
 }) {
   const updateContact = useUpdateContact();
   const qc = useQueryClient();
-  const stages = contact.pipeline === "onboarding" ? ONBOARDING_STAGES : SALES_STAGES;
+  const stages = contact.pipeline === "Onboarding" ? ONBOARDING_STAGES : SALES_STAGES;
   const [selectedStage, setSelectedStage] = useState(contact.stage);
 
   const handleMove = async () => {
@@ -473,6 +494,21 @@ function MoveStageDialog({
       const label = stages.find((s) => s.key === selectedStage)?.label || selectedStage;
       await logActivity("stage_changed", `moved to ${label}`, contact.id);
       toast.success(`Moved to ${label}`);
+
+      // Trigger edge function if one exists for this stage
+      const flowName = STAGE_FLOW_MAP[selectedStage];
+      if (flowName) {
+        try {
+          await supabase.functions.invoke(flowName, {
+            body: { contact_id: contact.id, business_id: contact.business_id },
+          });
+          toast.info(`Automation triggered: ${flowName}`);
+        } catch (err) {
+          console.error(`Failed to invoke ${flowName}:`, err);
+          toast.error(`Automation failed: ${flowName}`);
+        }
+      }
+
       qc.invalidateQueries({ queryKey: ["contact"] });
       qc.invalidateQueries({ queryKey: ["contact_activity"] });
       onOpenChange(false);
@@ -535,6 +571,9 @@ function SendSmsDialog({
       message_type: "sms",
       scheduled_at: new Date().toISOString(),
       status: "pending",
+      to_phone: contact.phone,
+      business_id: contact.business_id,
+      metadata: { to: contact.phone },
     });
 
     if (error) {

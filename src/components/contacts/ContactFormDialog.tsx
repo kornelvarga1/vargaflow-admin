@@ -33,7 +33,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
       await stopSequences.mutateAsync(contact.id);
       await update.mutateAsync({
         id: contact.id,
-        stage: "lead_responded",
+        stage: "Lead Responded",
         stage_entered_at: new Date().toISOString(),
       });
       await logActivity("marked_replied", "was marked as replied — sequences stopped", contact.id);
@@ -53,8 +53,8 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
     email: "",
     phone: "",
     lead_source: "Other",
-    stage: defaultStage || "lead_in",
-    pipeline: defaultPipeline || "sales",
+    stage: defaultStage || "Lead In",
+    pipeline: defaultPipeline || "Sales",
     notes: "",
     tags: [] as string[],
   });
@@ -77,8 +77,8 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
         email: "",
         phone: "",
         lead_source: "Other",
-        stage: defaultStage || "lead_in",
-        pipeline: defaultPipeline || "sales",
+        stage: defaultStage || "Lead In",
+        pipeline: defaultPipeline || "Sales",
         notes: "",
         tags: [],
       });
@@ -145,7 +145,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
               <Select value={form.stage} onValueChange={(v) => set("stage", v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(form.pipeline === "onboarding" ? ONBOARDING_STAGES : SALES_STAGES).map((s) => (
+                  {(form.pipeline === "Onboarding" ? ONBOARDING_STAGES : SALES_STAGES).map((s) => (
                     <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -157,7 +157,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
             <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Any additional notes..." rows={3} />
           </div>
           <div className="flex items-center justify-between gap-2 pt-2">
-            {isEdit && contact.pipeline === "sales" && contact.stage !== "lead_responded" ? (
+            {isEdit && contact.pipeline === "Sales" && contact.stage !== "Lead Responded" ? (
               <Button
                 type="button"
                 variant="outline"

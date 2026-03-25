@@ -44,7 +44,10 @@ serve(async (req) => {
       : "your scheduled time";
     const meetingDate = appointment_time ? new Date(appointment_time) : new Date();
 
+    const now = Date.now();
+
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
+      if (scheduledAt.getTime() <= now) return; // skip past-time reminders
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
         business_id: bid,
@@ -57,6 +60,7 @@ serve(async (req) => {
     };
 
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
+      if (scheduledAt.getTime() <= now) return; // skip past-time reminders
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
         business_id: bid,
@@ -67,6 +71,13 @@ serve(async (req) => {
         metadata: { to, subject },
       });
     };
+
+    // Cancel any pending messages from prior sequences before queuing new ones
+    await supabase
+      .from("message_queue")
+      .update({ status: "cancelled" })
+      .eq("contact_id", contact.id)
+      .eq("status", "pending");
 
     // Immediately: update pipeline + internal notification
     await supabase
@@ -98,7 +109,7 @@ serve(async (req) => {
     });
 
     // Immediately: confirmation email
-    await fetch("https://api.resend.com/emails", {
+    const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${resendKey}`,
@@ -117,6 +128,10 @@ serve(async (req) => {
         `,
       }),
     });
+    if (!emailRes.ok) {
+      const emailData = await emailRes.json();
+      throw new Error(`Resend error: ${emailData.message ?? emailRes.statusText}`);
+    }
 
     // 24hr before
     const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);

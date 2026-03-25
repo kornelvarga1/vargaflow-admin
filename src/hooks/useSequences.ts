@@ -232,15 +232,17 @@ export async function generateSequenceMessages(
 
   const { data: contact } = await supabase
     .from("contacts")
-    .select("phone, full_name, business_id")
+    .select("phone, email, full_name, business_id")
     .eq("id", contactId)
     .single();
 
-  const { data: settings } = await supabase
+  let settingsQuery = supabase
     .from("settings")
-    .select("my_name, company_name, my_email, my_phone, website_url, onboarding_form_link, demo_calendar_link, launch_call_calendar_link")
-    .limit(1)
-    .single();
+    .select("my_name, company_name, my_email, my_phone, website_url, onboarding_form_link, demo_calendar_link, launch_call_calendar_link");
+  if (contact?.business_id) {
+    settingsQuery = settingsQuery.eq("business_id", contact.business_id);
+  }
+  const { data: settings } = await settingsQuery.limit(1).single();
 
   const now = new Date();
   const messages = steps.map((step) => {
@@ -260,6 +262,7 @@ export async function generateSequenceMessages(
       .replace(/\{\{demo_calendar_link\}\}/g, settings?.demo_calendar_link || '')
       .replace(/\{\{launch_call_calendar_link\}\}/g, settings?.launch_call_calendar_link || '');
 
+    const isEmail = step.message_type === "email";
     return {
       contact_id: contactId,
       contact_sequence_id: contactSequenceId,
@@ -269,6 +272,9 @@ export async function generateSequenceMessages(
       status: "pending" as const,
       to_phone: contact?.phone ?? null,
       business_id: contact?.business_id ?? null,
+      metadata: isEmail
+        ? { to: contact?.email ?? null, subject: `Message from ${settings?.company_name || "your contractor"}` }
+        : { to: contact?.phone ?? null },
     };
   });
 

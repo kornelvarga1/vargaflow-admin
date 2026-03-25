@@ -41,7 +41,7 @@ serve(async (req) => {
 
     const sendSMS = async (to: string, body: string) => {
       if (!to) return;
-      await fetch(
+      const res = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
         {
           method: "POST",
@@ -52,14 +52,25 @@ serve(async (req) => {
           body: new URLSearchParams({ To: to, From: twilioFrom, Body: body }),
         }
       );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(`Twilio error: ${data.message ?? res.statusText}`);
+      }
     };
+
+    // Cancel any pending messages from prior sequences
+    await supabase
+      .from("message_queue")
+      .update({ status: "cancelled" })
+      .eq("contact_id", contact.id)
+      .eq("status", "pending");
 
     const firstName = contact.full_name?.split(" ")[0] ?? "there";
     const phone = contact.phone;
     const email = contact.email;
 
     // Send onboarding email immediately
-    await fetch("https://api.resend.com/emails", {
+    const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${resendKey}`,
@@ -79,6 +90,10 @@ serve(async (req) => {
         `,
       }),
     });
+    if (!emailRes.ok) {
+      const emailData = await emailRes.json();
+      throw new Error(`Resend error: ${emailData.message ?? emailRes.statusText}`);
+    }
 
     // SMS 1 — Congratulations immediately
     await sendSMS(phone, `Congratulations, you signed up with ${companyName}! 🎉`);
@@ -113,6 +128,17 @@ serve(async (req) => {
         tags: updatedTags,
       })
       .eq("id", contact.id);
+
+    // Schedule the first form reminder in 48 hours
+    await supabase.from("message_queue").insert({
+      contact_id: contact.id,
+      business_id: bid,
+      message_type: "function_call",
+      message_content: "FUNCTION_CALL:flow-ob-form-reminder",
+      scheduled_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+      status: "pending",
+      metadata: { function_name: "flow-ob-form-reminder", payload: { contact_id: contact.id, business_id: bid, iteration: 1 } },
+    });
 
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,

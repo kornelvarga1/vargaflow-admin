@@ -75,6 +75,8 @@ export async function queueSteps(
     sendAt.setHours(sendAt.getHours() + (step.delay_hours ?? 0));
     sendAt.setMinutes(sendAt.getMinutes() + (step.delay_minutes ?? 0));
 
+    const to = step.message_type === "email" ? contact.email : contact.phone;
+
     return {
       contact_id: contactId,
       business_id: businessId,
@@ -82,10 +84,41 @@ export async function queueSteps(
       message_content: resolveTemplate(step.message_template, contact, settings),
       scheduled_at: sendAt.toISOString(),
       status: "pending",
-      metadata: { to: contact.phone },
+      metadata: step.message_type === "email"
+        ? { to, subject: `Message from ${settings.company_name ?? "your contractor"}` }
+        : { to },
     };
   });
 
   const { error } = await supabase.from("message_queue").insert(rows);
   if (error) throw new Error(`Queue insert error: ${error.message}`);
+}
+
+export async function cancelPendingMessages(
+  supabase: SupabaseClient,
+  contactId: string
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("message_queue")
+    .update({ status: "cancelled" })
+    .eq("contact_id", contactId)
+    .eq("status", "pending")
+    .select("id");
+
+  if (error) console.error(`Cancel pending messages error: ${error.message}`);
+  return data?.length ?? 0;
+}
+
+export async function hasPendingMessages(
+  supabase: SupabaseClient,
+  contactId: string
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("message_queue")
+    .select("id", { count: "exact", head: true })
+    .eq("contact_id", contactId)
+    .eq("status", "pending");
+
+  if (error) console.error(`Check pending messages error: ${error.message}`);
+  return (count ?? 0) > 0;
 }

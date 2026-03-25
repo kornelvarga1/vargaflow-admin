@@ -11,7 +11,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { contact_id, business_id } = await req.json();
+    const MAX_REMINDER_ITERATIONS = 10;
+
+    const { contact_id, business_id, iteration = 1 } = await req.json();
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -38,6 +40,14 @@ serve(async (req) => {
       );
     }
 
+    if (iteration > MAX_REMINDER_ITERATIONS) {
+      console.log(`Max reminder iterations (${MAX_REMINDER_ITERATIONS}) reached for contact ${contact_id}`);
+      return new Response(
+        JSON.stringify({ success: true, skipped: "max iterations reached" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myEmail = settings.my_email || "hello@vargaflow.com";
@@ -50,7 +60,7 @@ serve(async (req) => {
     const email = contact.email;
 
     // Send reminder email
-    await fetch("https://api.resend.com/emails", {
+    const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${resendKey}`,
@@ -70,6 +80,10 @@ serve(async (req) => {
         `,
       }),
     });
+    if (!emailRes.ok) {
+      const emailData = await emailRes.json();
+      throw new Error(`Resend error: ${emailData.message ?? emailRes.statusText}`);
+    }
 
     // Send reminder SMS
     await supabase.from("message_queue").insert({
@@ -90,7 +104,7 @@ serve(async (req) => {
       message_content: `FUNCTION_CALL:flow-ob-form-reminder`,
       scheduled_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
       status: "pending",
-      metadata: { function_name: "flow-ob-form-reminder", payload: { contact_id: contact.id, business_id: bid } },
+      metadata: { function_name: "flow-ob-form-reminder", payload: { contact_id: contact.id, business_id: bid, iteration: iteration + 1 } },
     });
 
     await supabase.from("automation_logs").insert({

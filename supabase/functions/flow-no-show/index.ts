@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings, getSequenceSteps, queueSteps } from "../_shared/utils.ts";
+import { getSettings, getSequenceSteps, queueSteps, cancelPendingMessages, hasPendingMessages } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +27,16 @@ serve(async (req) => {
     if (error || !contact) throw new Error("Contact not found");
 
     const bid = business_id ?? contact.business_id;
+
+    if (await hasPendingMessages(supabase, contact.id)) {
+      return new Response(
+        JSON.stringify({ success: true, skipped: "pending messages already exist" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    await cancelPendingMessages(supabase, contact.id);
+
     const settings = await getSettings(supabase, bid);
     const steps = await getSequenceSteps(supabase, "Flow #6 — No Show");
     await queueSteps(supabase, contact.id, steps, contact, settings, bid);

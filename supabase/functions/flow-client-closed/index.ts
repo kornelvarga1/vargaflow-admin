@@ -29,6 +29,13 @@ serve(async (req) => {
     const bid = business_id ?? contact.business_id;
     const settings = await getSettings(supabase, bid);
 
+    // Cancel any pending messages from prior sequences
+    await supabase
+      .from("message_queue")
+      .update({ status: "cancelled" })
+      .eq("contact_id", contact.id)
+      .eq("status", "pending");
+
     const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
     const updatedTags = currentTags.includes("New Client") ? currentTags : [...currentTags, "New Client"];
 

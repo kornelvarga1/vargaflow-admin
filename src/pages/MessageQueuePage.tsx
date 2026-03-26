@@ -62,7 +62,8 @@ function useConversationContacts() {
       // Use RPC-style: fetch contacts that have messages, ordered by latest message
       const { data: contacts, error: contactsError } = await supabase
         .from("contacts")
-        .select("id, full_name, phone, pipeline, stage, business_id");
+        .select("id, full_name, phone, pipeline, stage, business_id")
+        .is("business_id", null);
       if (contactsError) throw contactsError;
       if (!contacts || contacts.length === 0) return [];
 

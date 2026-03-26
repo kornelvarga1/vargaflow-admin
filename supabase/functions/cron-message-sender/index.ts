@@ -158,7 +158,7 @@ serve(async (_req) => {
       processingIds.push(msg.id);
 
       try {
-        if (msg.message_type === "sms") {
+        if (msg.message_type === "sms" || msg.message_type === "internal_sms") {
           // SMS: to_phone first, fall back to metadata.to
           const to = msg.to_phone ?? msg.metadata?.to;
           if (!to) throw new Error(`No phone number for message ${msg.id}`);

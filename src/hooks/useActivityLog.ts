@@ -11,9 +11,19 @@ export function useActivityLog(limit = 20) {
   return useQuery({
     queryKey: ["activity_log", limit],
     queryFn: async () => {
+      // activity_log has no business_id column — filter via internal contact IDs
+      const { data: internalContacts } = await supabase
+        .from("contacts")
+        .select("id")
+        .is("business_id", null);
+
+      const internalIds = (internalContacts || []).map((c) => c.id);
+      if (internalIds.length === 0) return [] as ActivityLog[];
+
       const { data, error } = await supabase
         .from("activity_log")
         .select("*, contacts(full_name)")
+        .in("contact_id", internalIds)
         .order("created_at", { ascending: false })
         .limit(limit);
       if (error) throw error;

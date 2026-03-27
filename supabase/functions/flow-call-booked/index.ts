@@ -9,10 +9,15 @@ const corsHeaders = {
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  console.log("[1] flow-call-booked invoked");
+
   try {
     const body = await req.json();
+    console.log("[2] body parsed:", JSON.stringify(body).slice(0, 500));
 
     const event = body.payload ?? body;
+    console.log("[2.5] full raw payload:", JSON.stringify(event));
+
     const businessId = body.business_id ?? event.business_id;
     const eventId = event.uri ?? event.uuid ?? crypto.randomUUID();
     const invitee = event.invitee ?? {};
@@ -20,11 +25,22 @@ serve(async (req) => {
 
     const contactName = invitee.name ?? "there";
     const contactEmail = invitee.email ?? "";
-    const contactPhone = invitee.text_reminder_number ?? "";
     const meetingLink = event.event?.location?.join_url ?? "";
     const appointmentTime = eventTime
       ? new Date(eventTime).toLocaleString("en-US", { timeZone: "America/New_York" })
       : "your scheduled time";
+
+    // Extract phone: check text_reminder_number first, then questions_and_answers
+    let contactPhone = invitee.text_reminder_number ?? "";
+    if (!contactPhone && Array.isArray(event.questions_and_answers)) {
+      const phoneEntry = event.questions_and_answers.find((qa: { question: string; answer: string }) =>
+        /phone|mobile|cell|number/i.test(qa.question)
+      );
+      if (phoneEntry?.answer) contactPhone = phoneEntry.answer;
+      console.log("[2.6] questions_and_answers phone search:", phoneEntry ?? "not found");
+    }
+
+    console.log("[3] parsed fields — eventId:", eventId, "email:", contactEmail, "phone:", contactPhone, "businessId:", businessId);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -36,8 +52,10 @@ serve(async (req) => {
       .from("processed_webhooks")
       .insert({ event_id: eventId });
     if (dupError) {
+      console.log("[4] duplicate webhook, skipping. error:", dupError.message);
       return new Response(JSON.stringify({ skipped: "duplicate" }), { status: 200 });
     }
+    console.log("[4] dedup passed");
 
     // Find or create contact
     let contact;
@@ -49,6 +67,7 @@ serve(async (req) => {
 
     if (existing) {
       contact = existing;
+      console.log("[5] existing contact found:", contact.id, "phone:", contact.phone);
     } else {
       const { data: newContact, error: insertError } = await supabase
         .from("contacts")
@@ -64,9 +83,32 @@ serve(async (req) => {
         .single();
       if (insertError) throw new Error(`Contact error: ${insertError.message}`);
       contact = newContact;
+      console.log("[5] new contact created:", contact.id);
     }
 
     const bid = businessId ?? contact.business_id;
+    const resolvedPhone = contactPhone || contact.phone || "";
+    console.log("[6] bid:", bid, "resolvedPhone:", resolvedPhone);
+
+    if (!resolvedPhone) {
+      console.log("[6-WARN] no phone number found anywhere — skipping SMS sequences and exiting gracefully");
+      await supabase.from("automation_logs").insert({
+        contact_id: contact.id,
+        business_id: bid,
+        flow: "flow-call-booked",
+        status: "skipped-no-phone",
+        ran_at: new Date().toISOString(),
+      });
+      return new Response(
+        JSON.stringify({ success: false, reason: "no phone number available for contact" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // If the contact record had no phone but the webhook provided one, save it
+    if (contactPhone && !contact.phone) {
+      await supabase.from("contacts").update({ phone: contactPhone }).eq("id", contact.id);
+    }
 
     // Cancel any pending messages from prior sequences before queuing new ones
     await supabase
@@ -81,12 +123,17 @@ serve(async (req) => {
       .eq("id", contact.id);
 
     // Load settings from settings table
-    const { data: settings, error: settingsError } = await supabase
-      .from("settings")
-      .select("*")
-      .eq("business_id", bid)
-      .single();
+    console.log("[7] fetching settings, bid:", bid);
+    const { data: settings, error: settingsError } = await (
+      bid
+        ? supabase.from("settings").select("*").eq("business_id", bid).single()
+        : supabase.from("settings").select("*").limit(1).single()
+    );
     if (settingsError) throw new Error(`Settings error: ${settingsError.message}`);
+    console.log("[8] settings loaded, my_name:", settings.my_name, "my_phone:", settings.my_phone);
+
+    // If bid was missing, resolve it from settings so downstream inserts have it
+    const resolvedBid = bid ?? settings.business_id;
 
     const myName = settings.my_name || "Kornel";
     const myPhone = settings.my_phone || "";
@@ -99,9 +146,11 @@ serve(async (req) => {
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
     const twilioFrom = Deno.env.get("TWILIO_PHONE_NUMBER")!;
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
+    console.log("[9] twilio from:", twilioFrom, "twilioSid set:", !!twilioSid, "resendKey set:", !!resendKey);
 
     const sendSMS = async (to: string, body: string) => {
-      if (!to) return;
+      if (!to) { console.log("[SMS] skipped — no 'to' number"); return; }
+      console.log("[SMS] sending to:", to, "from:", twilioFrom);
       const res = await fetch(
         `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
         {
@@ -117,10 +166,12 @@ serve(async (req) => {
         const data = await res.json();
         throw new Error(`Twilio error: ${data.message ?? res.statusText}`);
       }
+      console.log("[SMS] sent ok to:", to);
     };
 
     const sendEmail = async (to: string, subject: string, html: string) => {
       if (!to) return;
+      console.log("[EMAIL] sending to:", to, "subject:", subject);
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -138,15 +189,16 @@ serve(async (req) => {
         const data = await res.json();
         throw new Error(`Resend error: ${data.message ?? res.statusText}`);
       }
+      console.log("[EMAIL] sent ok to:", to);
     };
 
     const now = Date.now();
 
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
-      if (scheduledAt.getTime() <= now) return; // skip past-time reminders
+      if (scheduledAt.getTime() <= now) { console.log("[QUEUE] skipped past-time SMS for:", to, "at:", scheduledAt.toISOString()); return; }
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
-        business_id: bid,
+        business_id: resolvedBid,
         message_type: "sms",
         message_content: body,
         scheduled_at: scheduledAt.toISOString(),
@@ -156,10 +208,10 @@ serve(async (req) => {
     };
 
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
-      if (scheduledAt.getTime() <= now) return; // skip past-time reminders
+      if (scheduledAt.getTime() <= now) return;
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
-        business_id: bid,
+        business_id: resolvedBid,
         message_type: "email",
         message_content: html,
         scheduled_at: scheduledAt.toISOString(),
@@ -177,23 +229,26 @@ serve(async (req) => {
     const tagsArr: string[] = Array.isArray(tags?.tags) ? tags.tags : [];
     const hasBookedTag = tagsArr.includes("Booked");
     const meetingDate = eventTime ? new Date(eventTime) : new Date();
+    console.log("[10] hasBookedTag:", hasBookedTag, "meetingDate:", meetingDate.toISOString());
 
     // Step 1: Confirmation SMS immediately
+    console.log("[11] sending confirmation SMS to:", resolvedPhone);
     await sendSMS(
-      contactPhone,
+      resolvedPhone,
       `Booked! Your Zoom call with ${myName} is all set for ${appointmentTime}. — ${myName}`
     );
 
     // Step 2: Internal SMS immediately
+    console.log("[12] sending internal SMS to myPhone:", myPhone);
     if (myPhone) {
       await sendSMS(
         myPhone,
-        `${contactName} just booked the call. Date: ${appointmentTime}. Number: ${contactPhone}.`
+        `${contactName} just booked the call. Date: ${appointmentTime}. Number: ${resolvedPhone}.`
       );
     }
 
     if (!hasBookedTag) {
-      // YES BRANCH — First time booker
+      console.log("[13] first-time booker branch");
       const updatedTags = tagsArr.includes("Booked") ? tagsArr : [...tagsArr, "Booked"];
       await supabase.from("contacts").update({ tags: updatedTags }).eq("id", contact.id);
 
@@ -208,20 +263,20 @@ serve(async (req) => {
       );
 
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Hey, it's ${myName}. I am real this time 😄 I have our Zoom call scheduled for ${appointmentTime} your time. Have you added it to your calendar?`,
         new Date(Date.now() + 2 * 60 * 1000)
       );
 
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `👍👍 By the way, here is that short video breaking down exactly what we do: ${videoLink}`,
         new Date(Date.now() + 4 * 60 * 1000)
       );
 
       const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Hey, we have our call tomorrow. Just wanted to hit you with a few links if you want to do your homework on us: ${websiteUrl} ${videoLink}`,
         reminder24h
       );
@@ -234,14 +289,14 @@ serve(async (req) => {
       );
 
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Excited to talk in a few hours ${contactName}. I Googled your business and have some notes on easy fixes you can implement yourself. Talk soon, ${myName}`,
         new Date(meetingDate.getTime() - 2 * 60 * 60 * 1000)
       );
 
       const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `See you on Zoom in 1 hour! Just sent the Zoom link to your email. Here it is: ${meetingLink}`,
         reminder1h
       );
@@ -253,12 +308,12 @@ serve(async (req) => {
         reminder1h
       );
       if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 1 hour. Number: ${contactPhone}.`, reminder1h);
+        await queueSMS(myPhone, `Your sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
       }
 
       const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Talk to you in 10 minutes! Joining on laptop is better. Here's the link if on phone: ${meetingLink}`,
         reminder10m
       );
@@ -271,16 +326,16 @@ serve(async (req) => {
 
       const reminder3m = new Date(meetingDate.getTime() - 3 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `I am on Zoom whenever you're ready. Here's the link if joining on phone: ${meetingLink}`,
         reminder3m
       );
       if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 3 minutes. Number: ${contactPhone}.`, reminder3m);
+        await queueSMS(myPhone, `Your sales call with ${contactName} is in 3 minutes. Number: ${resolvedPhone}.`, reminder3m);
       }
 
     } else {
-      // NO BRANCH — Returning booker
+      console.log("[13] returning booker branch");
       await sendEmail(
         contactEmail,
         `Action Required — Call with ${myName}`,
@@ -290,43 +345,43 @@ serve(async (req) => {
       );
 
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Hey ${contactName}, got you scheduled in again for ${appointmentTime}. This 100% works for you, right? — ${myName}`,
         new Date(Date.now() + 60 * 1000)
       );
 
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `😊 You might have seen these already but just so you know, we are not full of it — I take a lot of pride in our reviews: ${testimonialsLink}`,
         new Date(Date.now() + 15 * 60 * 1000)
       );
 
       const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Hey, see you on Zoom tomorrow. Just wanted to confirm your appointment. Talk soon, ${myName}, ${companyName}`,
         reminder24h
       );
 
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `Here's that video again if you want to watch before our call — just 6 minutes: ${videoLink}`,
         new Date(meetingDate.getTime() - 2 * 60 * 60 * 1000)
       );
 
       const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `See you in an hour! Sending the link to your email. Here it is: ${meetingLink} — ${myName}`,
         reminder1h
       );
       if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 1 hour. Number: ${contactPhone}.`, reminder1h);
+        await queueSMS(myPhone, `Your sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
       }
 
       const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `See you in 10 minutes! Just sent the meeting link to your email so it's at the top of your inbox`,
         reminder10m
       );
@@ -339,30 +394,32 @@ serve(async (req) => {
 
       const reminder5m = new Date(meetingDate.getTime() - 5 * 60 * 1000);
       await queueSMS(
-        contactPhone,
+        resolvedPhone,
         `I am on the call. Let me know if you can't find the link.`,
         reminder5m
       );
       if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 5 minutes. Number: ${contactPhone}.`, reminder5m);
+        await queueSMS(myPhone, `Your sales call with ${contactName} is in 5 minutes. Number: ${resolvedPhone}.`, reminder5m);
       }
     }
 
+    console.log("[14] all done, logging to automation_logs");
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
-      business_id: bid,
+      business_id: resolvedBid,
       flow: "flow-call-booked",
       status: "completed",
       ran_at: new Date().toISOString(),
     });
 
+    console.log("[15] success");
     return new Response(
       JSON.stringify({ success: true, contact_id: contact.id, branch: hasBookedTag ? "returning" : "first-time" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (err) {
-    console.error(err);
+    console.error("[ERROR]", err.message, err.stack);
     return new Response(
       JSON.stringify({ success: false, error: err.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

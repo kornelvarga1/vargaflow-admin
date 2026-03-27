@@ -39,7 +39,7 @@ function useMySettings() {
       const { data, error } = await supabase
         .from("settings")
         .select("*")
-        .limit(1)
+        .is("business_id", null)
         .single();
       if (error && error.code !== "PGRST116") throw error;
       return data as Record<string, string> | null;

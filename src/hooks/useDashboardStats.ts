@@ -14,14 +14,22 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: ["dashboard_stats"],
     queryFn: async () => {
-      const [contactsRes, messagesRes, activeEnrollmentsRes] = await Promise.all([
-        supabase.from("contacts").select("pipeline, stage"),
-        supabase.from("message_queue").select("status"),
-        supabase.from("contact_sequences").select("id", { count: "exact", head: true }).eq("status", "active"),
+      const [contactsRes, messagesRes] = await Promise.all([
+        supabase.from("contacts").select("id, pipeline, stage").is("business_id", null),
+        supabase.from("message_queue").select("status").is("business_id", null),
       ]);
 
       const contacts = contactsRes.data || [];
       const messages = messagesRes.data || [];
+      const contactIds = contacts.map((c) => c.id);
+
+      const activeEnrollmentsRes = contactIds.length > 0
+        ? await supabase
+            .from("contact_sequences")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "active")
+            .in("contact_id", contactIds)
+        : { count: 0 };
 
       const salesByStage: Record<string, number> = {};
       const onboardingByStage: Record<string, number> = {};

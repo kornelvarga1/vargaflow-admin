@@ -32,6 +32,8 @@ const SETTINGS_FIELDS: { key: string; label: string }[] = [
   { key: "onboarding_form_link", label: "Onboarding Form Link" },
 ];
 
+const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
+
 function useMySettings() {
   return useQuery({
     queryKey: ["my_settings"],
@@ -39,7 +41,7 @@ function useMySettings() {
       const { data, error } = await supabase
         .from("settings")
         .select("*")
-        .is("business_id", null)
+        .eq("business_id", ADMIN_BUSINESS_ID)
         .single();
       if (error && error.code !== "PGRST116") throw error;
       return data as Record<string, string> | null;
@@ -67,18 +69,11 @@ function MySettingsTab() {
       const payload: Record<string, string> = {};
       SETTINGS_FIELDS.forEach(({ key }) => { payload[key] = form[key] ?? ""; });
 
-      if ((settings as any)?.id) {
-        const { error } = await supabase
-          .from("settings")
-          .update(payload as any)
-          .eq("id", (settings as any).id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("settings")
-          .insert(payload as any);
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from("settings")
+        .update(payload as any)
+        .eq("business_id", ADMIN_BUSINESS_ID);
+      if (error) throw error;
       qc.invalidateQueries({ queryKey: ["my_settings"] });
       toast.success("Settings saved");
     } catch {

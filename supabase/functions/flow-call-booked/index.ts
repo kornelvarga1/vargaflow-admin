@@ -18,14 +18,15 @@ serve(async (req) => {
     const event = body.payload ?? body;
     console.log("[2.5] full raw payload:", JSON.stringify(event));
 
-    const businessId = body.business_id ?? event.business_id;
+    const businessId = body.business_id ?? event.business_id ?? Deno.env.get("VARGA_FLOW_ADMIN_BID");
     const eventId = event.uri ?? event.uuid ?? crypto.randomUUID();
     const invitee = event.invitee ?? {};
-    const eventTime = event.event?.start_time ?? event.start_time;
+    const eventTime = event.scheduled_event?.start_time ?? event.start_time;
+    console.log("[2.7] eventTime raw value:", eventTime, "| source: event.scheduled_event?.start_time:", event.scheduled_event?.start_time, "| fallback event.start_time:", event.start_time);
 
-    const contactName = invitee.name ?? "there";
-    const contactEmail = invitee.email ?? "";
-    const meetingLink = event.event?.location?.join_url ?? "";
+    const contactName = invitee.name ?? event.name ?? event.first_name ?? "there";
+    const contactEmail = invitee.email ?? event.email ?? "";
+    const meetingLink = event.scheduled_event?.location?.join_url ?? "";
     const appointmentTime = eventTime
       ? new Date(eventTime).toLocaleString("en-US", { timeZone: "America/New_York" })
       : "your scheduled time";
@@ -124,11 +125,11 @@ serve(async (req) => {
 
     // Load settings from settings table
     console.log("[7] fetching settings, bid:", bid);
-    const { data: settings, error: settingsError } = await (
-      bid
-        ? supabase.from("settings").select("*").eq("business_id", bid).single()
-        : supabase.from("settings").select("*").limit(1).single()
-    );
+    const { data: settings, error: settingsError } = await supabase
+      .from("settings")
+      .select("*")
+      .eq("business_id", bid)
+      .single();
     if (settingsError) throw new Error(`Settings error: ${settingsError.message}`);
     console.log("[8] settings loaded, my_name:", settings.my_name, "my_phone:", settings.my_phone);
 
@@ -196,7 +197,7 @@ serve(async (req) => {
 
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
       if (scheduledAt.getTime() <= now) { console.log("[QUEUE] skipped past-time SMS for:", to, "at:", scheduledAt.toISOString()); return; }
-      await supabase.from("message_queue").insert({
+      const { error: qErr } = await supabase.from("message_queue").insert({
         contact_id: contact.id,
         business_id: resolvedBid,
         message_type: "sms",
@@ -205,6 +206,11 @@ serve(async (req) => {
         status: "pending",
         metadata: { to },
       });
+      if (qErr) {
+        console.error("[QUEUE] insert FAILED for:", to, "scheduled_at:", scheduledAt.toISOString(), "error:", qErr.message);
+      } else {
+        console.log("[QUEUE] insert OK — to:", to, "scheduled_at:", scheduledAt.toISOString());
+      }
     };
 
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
@@ -229,7 +235,7 @@ serve(async (req) => {
     const tagsArr: string[] = Array.isArray(tags?.tags) ? tags.tags : [];
     const hasBookedTag = tagsArr.includes("Booked");
     const meetingDate = eventTime ? new Date(eventTime) : new Date();
-    console.log("[10] hasBookedTag:", hasBookedTag, "meetingDate:", meetingDate.toISOString());
+    console.log("[10] hasBookedTag:", hasBookedTag, "| eventTime:", eventTime ?? "UNDEFINED — meetingDate will be now(), all reminders will be skipped as past-time", "| meetingDate:", meetingDate.toISOString());
 
     // Step 1: Confirmation SMS immediately
     console.log("[11] sending confirmation SMS to:", resolvedPhone);

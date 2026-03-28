@@ -292,6 +292,45 @@ serve(async (_req) => {
 
     console.log(`Cron run: ${sent} sent, ${failed} failed out of ${messages.length} total`);
 
+    // ── Inbound SMS push notifications ──────────────────────────────────────
+    // Find inbound messages that haven't triggered a push yet and notify
+    const { data: inbound } = await supabase
+      .from("message_queue")
+      .select("id, business_id, message_content, metadata")
+      .eq("direction", "inbound")
+      .eq("push_notified", false)
+      .order("created_at", { ascending: true })
+      .limit(20);
+
+    if (inbound && inbound.length > 0) {
+      // Group by business_id — one push per business per cron tick (most recent)
+      const byBusiness = new Map<string, typeof inbound[0]>();
+      for (const row of inbound) {
+        if (row.business_id) byBusiness.set(row.business_id, row);
+      }
+
+      for (const [bizId, row] of byBusiness) {
+        try {
+          await invokeFunctionCall("send-push-notification", {
+            business_id: bizId,
+            title: "New reply",
+            body: row.message_content?.slice(0, 120) ?? "A lead replied to your message.",
+          });
+          console.log(`[push] notified business ${bizId} of inbound SMS`);
+        } catch (pushErr) {
+          console.error(`[push] failed for business ${bizId}:`, pushErr);
+        }
+      }
+
+      // Mark all fetched inbound rows as notified regardless of per-business outcome
+      const ids = inbound.map((r) => r.id);
+      await supabase
+        .from("message_queue")
+        .update({ push_notified: true })
+        .in("id", ids);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     return new Response(
       JSON.stringify({ sent, failed, total: messages.length }),
       { status: 200, headers: { "Content-Type": "application/json" } }

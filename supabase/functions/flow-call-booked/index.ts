@@ -214,8 +214,10 @@ serve(async (req) => {
     };
 
     const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
-      if (scheduledAt.getTime() <= now) return;
-      await supabase.from("message_queue").insert({
+      if (!to) { console.log("[QUEUE EMAIL] skipped — no email address"); return; }
+      if (scheduledAt.getTime() <= now) { console.log("[QUEUE EMAIL] skipped past-time email for:", to, "at:", scheduledAt.toISOString()); return; }
+      console.log("[QUEUE EMAIL] inserting — to:", to, "subject:", subject, "scheduled_at:", scheduledAt.toISOString());
+      const { error: qErr } = await supabase.from("message_queue").insert({
         contact_id: contact.id,
         business_id: resolvedBid,
         message_type: "email",
@@ -224,6 +226,11 @@ serve(async (req) => {
         status: "pending",
         metadata: { to, subject },
       });
+      if (qErr) {
+        console.error("[QUEUE EMAIL] insert FAILED — to:", to, "subject:", subject, "error:", qErr.message);
+      } else {
+        console.log("[QUEUE EMAIL] insert OK — to:", to, "scheduled_at:", scheduledAt.toISOString());
+      }
     };
 
     const { data: tags } = await supabase

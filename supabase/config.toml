@@ -170,3 +170,8 @@ entrypoint = "./functions/flow-ob-launch-call/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/flow-ob-launch-call/*.html" ]
+
+[functions.send-push-notification]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-push-notification/index.ts"

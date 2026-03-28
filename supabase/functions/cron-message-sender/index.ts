@@ -131,12 +131,7 @@ serve(async (_req) => {
 
     const messages = [...(pendingMessages ?? []), ...(retryMessages ?? [])];
 
-    if (messages.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, failed: 0, retried: 0 }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    // Note: do NOT early-return here — push notification section must always run
 
     let sent = 0;
     let failed = 0;
@@ -293,8 +288,9 @@ serve(async (_req) => {
     console.log(`Cron run: ${sent} sent, ${failed} failed out of ${messages.length} total`);
 
     // ── Inbound SMS push notifications ──────────────────────────────────────
-    // Find inbound messages that haven't triggered a push yet and notify
-    const { data: inbound } = await supabase
+    console.log("[push] scanning for unnotified inbound messages...");
+
+    const { data: inbound, error: inboundErr } = await supabase
       .from("message_queue")
       .select("id, business_id, message_content, metadata")
       .eq("direction", "inbound")
@@ -302,32 +298,60 @@ serve(async (_req) => {
       .order("created_at", { ascending: true })
       .limit(20);
 
+    if (inboundErr) {
+      console.error("[push] inbound query error:", inboundErr.message, inboundErr.details, inboundErr.hint);
+    } else {
+      console.log(`[push] inbound rows found: ${inbound?.length ?? 0}`);
+    }
+
     if (inbound && inbound.length > 0) {
       // Group by business_id — one push per business per cron tick (most recent)
       const byBusiness = new Map<string, typeof inbound[0]>();
       for (const row of inbound) {
         if (row.business_id) byBusiness.set(row.business_id, row);
+        else console.log("[push] row missing business_id, skipping:", row.id);
       }
 
+      console.log(`[push] businesses to notify: ${[...byBusiness.keys()].join(", ")}`);
+
       for (const [bizId, row] of byBusiness) {
+        console.log(`[push] calling send-push-notification for business ${bizId}, message_id: ${row.id}`);
         try {
-          await invokeFunctionCall("send-push-notification", {
-            business_id: bizId,
-            title: "New reply",
-            body: row.message_content?.slice(0, 120) ?? "A lead replied to your message.",
+          const url = `${SUPABASE_URL}/functions/v1/send-push-notification`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              business_id: bizId,
+              title: "New reply",
+              body: row.message_content?.slice(0, 120) ?? "A lead replied to your message.",
+            }),
           });
-          console.log(`[push] notified business ${bizId} of inbound SMS`);
+          const responseText = await res.text();
+          console.log(`[push] send-push-notification response: status=${res.status} body=${responseText}`);
+          if (!res.ok) {
+            console.error(`[push] send-push-notification non-200 for business ${bizId}: ${res.status} ${responseText}`);
+          }
         } catch (pushErr) {
-          console.error(`[push] failed for business ${bizId}:`, pushErr);
+          console.error(`[push] fetch error for business ${bizId}:`, pushErr instanceof Error ? pushErr.message : pushErr);
         }
       }
 
       // Mark all fetched inbound rows as notified regardless of per-business outcome
       const ids = inbound.map((r) => r.id);
-      await supabase
+      console.log(`[push] marking ${ids.length} rows as push_notified=true: ${ids.join(", ")}`);
+      const { error: markErr } = await supabase
         .from("message_queue")
         .update({ push_notified: true })
         .in("id", ids);
+      if (markErr) {
+        console.error("[push] failed to mark rows notified:", markErr.message);
+      } else {
+        console.log("[push] rows marked push_notified=true successfully");
+      }
     }
     // ─────────────────────────────────────────────────────────────────────────
 

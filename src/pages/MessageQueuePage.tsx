@@ -151,7 +151,7 @@ function useConversation(contactId: string | null) {
         scheduled_at: msg.scheduled_at,
         sent_at: msg.sent_at,
         created_at: msg.created_at,
-        direction: "outbound" as const, // All current messages are outbound
+        direction: (msg.direction ?? "outbound") as "outbound" | "inbound",
       })) as Message[];
     },
     refetchInterval: 10000,

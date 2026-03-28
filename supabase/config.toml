@@ -1,4 +1,11 @@
 project_id = "nxlptuvlpusrnkngxozn"
+
+[functions.inbound-sms]
+enabled = true
+verify_jwt = false
+import_map = "./functions/inbound-sms/deno.json"
+entrypoint = "./functions/inbound-sms/index.ts"
+
 [functions.flow-lead-form-submitted]
 enabled = true
 verify_jwt = true

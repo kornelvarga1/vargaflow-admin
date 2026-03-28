@@ -127,6 +127,8 @@ function useConversation(contactId: string | null) {
         .from("message_queue")
         .select("*")
         .eq("contact_id", contactId!)
+        .in("status", ["sent", "received"])
+        .order("sent_at", { ascending: true, nullsFirst: false })
         .order("scheduled_at", { ascending: true });
 
       if (error) throw error;

@@ -49,15 +49,25 @@ serve(async (req) => {
 
     const businessId = settings.business_id;
 
-    // 2. Find or create contact by phone + business_id
+    // 2. Find or create contact by phone
+    //    CRM contacts have business_id = null, so try that first before falling back to business_id match
     let contactId: string;
 
-    const { data: existing } = await supabase
+    const { data: byNullBiz } = await supabase
+      .from("contacts")
+      .select("id, full_name")
+      .eq("phone", from)
+      .is("business_id", null)
+      .maybeSingle();
+
+    const { data: byBiz } = !byNullBiz ? await supabase
       .from("contacts")
       .select("id, full_name")
       .eq("phone", from)
       .eq("business_id", businessId)
-      .single();
+      .maybeSingle() : { data: null };
+
+    const existing = byNullBiz ?? byBiz;
 
     if (existing) {
       contactId = existing.id;
@@ -67,7 +77,7 @@ serve(async (req) => {
         .from("contacts")
         .insert({
           phone: from,
-          business_id: businessId,
+          business_id: null,
           full_name: from,      // placeholder — can be updated later
           pipeline: "Sales",
           stage: "Lead",

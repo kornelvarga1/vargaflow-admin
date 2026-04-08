@@ -75,7 +75,6 @@ function useConversationContacts() {
         .from("message_queue")
         .select("contact_id, message_content, scheduled_at, sent_at, status, direction")
         .in("contact_id", contactIds)
-        .neq("message_type", "internal_sms")
         .order("scheduled_at", { ascending: false })
         .limit(500);
 
@@ -129,7 +128,6 @@ function useConversation(contactId: string | null) {
         .select("*")
         .eq("contact_id", contactId!)
         .in("status", ["sent", "received"])
-        .neq("message_type", "internal_sms")
         .order("scheduled_at", { ascending: true });
 
       if (error) throw error;

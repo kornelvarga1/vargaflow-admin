@@ -117,21 +117,27 @@ serve(async (req) => {
       console.error("[inbound-sms] activity_log insert failed:", logErr);
     }
 
-    // 5. Notify contractor via SMS
+    // 5. Notify contractor via SMS (direct Twilio — not queued, so it never appears in the inbox)
     try {
       if (settings.my_phone) {
+        const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+        const twilioAuth  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+        const twilioFrom  = Deno.env.get("TWILIO_PHONE_NUMBER")!;
         const contactName = existing?.full_name ?? from;
-        const preview = body.slice(0, 100) + (body.length > 100 ? "…" : "");
-        await supabase.from("message_queue").insert({
-          contact_id:      contactId,
-          business_id:     businessId,
-          direction:       "outbound",
-          status:          "pending",
-          message_type:    "internal_sms",
-          message_content: `Reply from ${contactName}: "${preview}"\n${APP_URL}/messages`,
-          scheduled_at:    now,
-          metadata:        { to: settings.my_phone },
-        });
+        const preview     = body.slice(0, 100) + (body.length > 100 ? "…" : "");
+        const message     = `Reply from ${contactName}: "${preview}"\n${APP_URL}/messages`;
+
+        await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
+            },
+            body: new URLSearchParams({ To: settings.my_phone, From: twilioFrom, Body: message }),
+          }
+        );
       }
     } catch (notifyErr) {
       console.error("[inbound-sms] contractor notification failed:", notifyErr);

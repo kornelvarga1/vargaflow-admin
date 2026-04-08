@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Building2, Menu, X, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
+import { useConversationOpen } from "@/context/ConversationContext";
 import logo from "@/assets/logo.png";
 
 const navItems = [
@@ -23,6 +24,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isConversationOpen } = useConversationOpen();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -30,9 +32,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-60 flex-col border-r border-border bg-sidebar shrink-0">
+      <aside className="hidden md:flex w-60 flex-col border-r border-border bg-sidebar shrink-0 border-t-[3px] border-t-primary">
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
           <img src={logo} alt="VargaFlow" className="h-9" />
         </div>
@@ -45,8 +47,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   isActive
-                    ? "bg-accent text-accent-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                    : "text-sidebar-foreground hover:text-foreground hover:bg-sidebar-accent/50"
                 }`
               }
             >
@@ -76,7 +78,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             className="absolute inset-0 bg-background/60 backdrop-blur-sm"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <aside className="relative w-64 bg-sidebar border-r border-border flex flex-col animate-slide-in-right">
+          <aside className="relative w-64 bg-sidebar border-r border-border flex flex-col animate-slide-in-left">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <img src={logo} alt="VargaFlow" className="h-8" />
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileMenuOpen(false)}>
@@ -93,7 +95,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                       isActive
-                        ? "bg-accent text-accent-foreground"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary/70"
                     }`
                   }
@@ -107,8 +109,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex border-t border-border glass safe-bottom">
+      {/* Mobile bottom nav — hidden when a conversation is open */}
+      <nav className={`md:hidden fixed bottom-0 left-0 right-0 z-40 flex border-t border-border glass safe-bottom ${isConversationOpen ? "hidden" : ""}`}>
+        <button
+          onClick={() => setMobileMenuOpen(true)}
+          className="flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground active-press"
+        >
+          <div className="p-1">
+            <Menu className="w-4 h-4" />
+          </div>
+          <span>More</span>
+        </button>
         {mobileNavItems.map((item) => {
           const isActive =
             item.to === "/"
@@ -119,29 +130,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               key={item.to}
               to={item.to}
               className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all active-press ${
-                isActive ? "text-accent-foreground" : "text-muted-foreground"
+                isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <div className={`p-1 rounded-md transition-colors ${isActive ? "bg-accent/50" : ""}`}>
+              <div className={`p-1 rounded-md transition-colors ${isActive ? "bg-primary/15" : ""}`}>
                 <item.icon className="w-4 h-4" />
               </div>
               <span>{item.label.split(" ")[0]}</span>
             </NavLink>
           );
         })}
-        <button
-          onClick={() => setMobileMenuOpen(true)}
-          className="flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium text-muted-foreground active-press"
-        >
-          <div className="p-1">
-            <Menu className="w-4 h-4" />
-          </div>
-          <span>More</span>
-        </button>
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
+      <main className={`flex-1 min-h-0 md:pb-0 ${isConversationOpen ? "overflow-hidden pb-0 flex flex-col" : "overflow-auto pb-20"}`}>
+        {children}
+      </main>
     </div>
   );
 }

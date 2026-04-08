@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Check, Loader2, Plus, Building2 } from "lucide-react";
+import { Check, Loader2, Plus, Building2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 // ---- Types ----
@@ -334,10 +334,13 @@ export default function ClientsPage() {
 
   return (
     <div className="flex h-full overflow-hidden animate-fade-in">
-      {/* Sidebar */}
-      <aside className="w-56 shrink-0 border-r border-border bg-sidebar flex flex-col overflow-hidden">
+      {/* Sidebar — hidden on mobile when a business is selected */}
+      <aside className={`${selectedId ? "hidden md:flex" : "flex"} w-full md:w-56 shrink-0 border-r border-border bg-sidebar flex-col overflow-hidden`}>
         <div className="px-4 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Businesses</h2>
+          <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-primary" />
+            Businesses
+          </h2>
         </div>
         <div className="flex-1 overflow-y-auto py-2">
           {isLoading ? (
@@ -351,9 +354,9 @@ export default function ClientsPage() {
               <button
                 key={biz.id}
                 onClick={() => setSelectedId(biz.id)}
-                className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center gap-2 ${
+                className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center gap-2 border-b border-border/50 ${
                   selectedId === biz.id
-                    ? "bg-accent text-accent-foreground font-medium"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
                 }`}
               >
@@ -365,15 +368,23 @@ export default function ClientsPage() {
         </div>
       </aside>
 
-      {/* Main area */}
-      <main className="flex-1 overflow-auto p-6">
+      {/* Main area — hidden on mobile when no business is selected */}
+      <main className={`${selectedId ? "flex" : "hidden md:flex"} flex-1 flex-col overflow-auto`}>
         {!selected ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <Building2 className="w-10 h-10 text-muted-foreground/30 mb-3" />
             <p className="text-muted-foreground text-sm">Select a business to view details</p>
           </div>
         ) : (
-          <div className="max-w-2xl space-y-6">
+          <div className="p-4 md:p-6 max-w-2xl space-y-6">
+            {/* Mobile back button */}
+            <div className="md:hidden">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedId(null)} className="-ml-2">
+                <ArrowLeft className="w-4 h-4 mr-1" />
+                All Businesses
+              </Button>
+            </div>
+
             <div>
               <h1 className="text-2xl font-display font-bold">{selected.name}</h1>
               <p className="text-xs text-muted-foreground font-mono mt-0.5">{selected.id}</p>

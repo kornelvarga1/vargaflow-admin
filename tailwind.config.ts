@@ -104,6 +104,10 @@ export default {
           from: { transform: "translateX(100%)" },
           to: { transform: "translateX(0)" },
         },
+        "slide-in-left": {
+          from: { transform: "translateX(-100%)" },
+          to: { transform: "translateX(0)" },
+        },
         "pulse-glow": {
           "0%, 100%": { boxShadow: "0 0 8px hsl(0 0% 100% / 0.08)" },
           "50%": { boxShadow: "0 0 20px hsl(0 0% 100% / 0.15)" },
@@ -120,6 +124,7 @@ export default {
         "fade-in-scale": "fade-in-scale 0.2s ease-out",
         "slide-up": "slide-up 0.4s ease-out",
         "slide-in-right": "slide-in-right 0.3s ease-out",
+        "slide-in-left": "slide-in-left 0.3s ease-out",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
         "shimmer": "shimmer 2s linear infinite",
       },

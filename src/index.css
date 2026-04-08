@@ -57,6 +57,9 @@
     --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(30 10% 97%));
     --shadow-glow: 0 0 20px hsl(36 90% 50% / 0.1);
     --shadow-card: 0 4px 24px hsl(30 10% 10% / 0.06);
+
+    --bubble-in-bg: #e5e5ea;
+    --bubble-in-text: #000000;
   }
 
   .dark {
@@ -105,6 +108,9 @@
     --info-foreground: 0 0% 100%;
 
     --shadow-card: 0 4px 24px hsl(0 0% 0% / 0.3);
+
+    --bubble-in-bg: #2c2c2e;
+    --bubble-in-text: #ffffff;
   }
 }
 

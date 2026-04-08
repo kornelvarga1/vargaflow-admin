@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppLayout from "@/components/layout/AppLayout";
+import { ConversationProvider } from "@/context/ConversationContext";
 import Index from "./pages/Index";
 import SettingsPage from "./pages/SettingsPage";
 import ContactsPage from "./pages/ContactsPage";
@@ -29,6 +30,7 @@ const App = () => (
             path="*"
             element={
               <ProtectedRoute>
+                <ConversationProvider>
                 <AppLayout>
                   <Routes>
                     <Route path="/" element={<Index />} />
@@ -43,6 +45,7 @@ const App = () => (
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </AppLayout>
+                </ConversationProvider>
               </ProtectedRoute>
             }
           />

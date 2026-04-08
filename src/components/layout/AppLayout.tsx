@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, Zap, ListChecks, Building2, Menu, X, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, ListChecks, Building2, Menu, X, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { useConversationOpen } from "@/context/ConversationContext";
@@ -9,8 +9,7 @@ import logo from "@/assets/logo.png";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/messages", icon: MessageSquare, label: "Messages" },
-  { to: "/pipeline/sales", icon: Kanban, label: "Sales Pipeline" },
-  { to: "/pipeline/onboarding", icon: Zap, label: "Onboarding" },
+  { to: "/pipeline", icon: Kanban, label: "Pipeline" },
   { to: "/contacts", icon: Users, label: "Contacts" },
   { to: "/sequences", icon: ListChecks, label: "Sequences" },
   { to: "/clients", icon: Building2, label: "Clients" },

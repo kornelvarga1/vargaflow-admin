@@ -7,8 +7,7 @@ import { ConversationProvider } from "@/context/ConversationContext";
 import Index from "./pages/Index";
 import SettingsPage from "./pages/SettingsPage";
 import ContactsPage from "./pages/ContactsPage";
-import SalesPipelinePage from "./pages/SalesPipelinePage";
-import OnboardingPipelinePage from "./pages/OnboardingPipelinePage";
+import PipelinePage from "./pages/PipelinePage";
 import SequencesPage from "./pages/SequencesPage";
 import MessageQueuePage from "./pages/MessageQueuePage";
 import ContactProfilePage from "./pages/ContactProfilePage";
@@ -36,8 +35,7 @@ const App = () => (
                     <Route path="/" element={<Index />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/contacts" element={<ContactsPage />} />
-                    <Route path="/pipeline/sales" element={<SalesPipelinePage />} />
-                    <Route path="/pipeline/onboarding" element={<OnboardingPipelinePage />} />
+                    <Route path="/pipeline" element={<PipelinePage />} />
                     <Route path="/sequences" element={<SequencesPage />} />
                     <Route path="/messages" element={<MessageQueuePage />} />
                     <Route path="/contacts/:id" element={<ContactProfilePage />} />

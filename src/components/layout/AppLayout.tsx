@@ -8,11 +8,11 @@ import logo from "@/assets/logo.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/messages", icon: MessageSquare, label: "Messages" },
   { to: "/pipeline/sales", icon: Kanban, label: "Sales Pipeline" },
   { to: "/pipeline/onboarding", icon: Zap, label: "Onboarding" },
   { to: "/contacts", icon: Users, label: "Contacts" },
   { to: "/sequences", icon: ListChecks, label: "Sequences" },
-  { to: "/messages", icon: MessageSquare, label: "Messages" },
   { to: "/clients", icon: Building2, label: "Clients" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];

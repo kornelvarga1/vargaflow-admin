@@ -26,6 +26,7 @@ import {
   MessageSquare,
   ArrowRightLeft,
   Pause,
+  Pencil,
   XCircle,
   Send,
   Clock,
@@ -34,6 +35,7 @@ import {
   Loader2,
   Copy,
 } from "lucide-react";
+import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -163,6 +165,7 @@ export default function ContactProfilePage() {
 
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -265,6 +268,15 @@ export default function ContactProfilePage() {
             })()}
           </div>
           <h1 className="text-xl font-display font-bold truncate flex-1">{contact.full_name}</h1>
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            title="Edit contact"
+            onClick={() => setEditOpen(true)}
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -457,6 +469,14 @@ export default function ContactProfilePage() {
       </div>
 
       {/* Dialogs */}
+      <ContactFormDialog
+        open={editOpen}
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) qc.invalidateQueries({ queryKey: ["contact"] });
+        }}
+        contact={contact}
+      />
       <MoveStageDialog
         open={moveDialogOpen}
         onOpenChange={setMoveDialogOpen}

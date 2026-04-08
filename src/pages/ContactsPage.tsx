@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, Search, MoreHorizontal, Pencil, Trash2, Mail, Phone } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Pencil, Trash2, Phone } from "lucide-react";
 import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
 
@@ -88,18 +88,12 @@ export default function ContactsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium font-display truncate">{c.full_name}</p>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                    {c.email && (
-                      <span className="flex items-center gap-1 truncate">
-                        <Mail className="w-3 h-3" /> {c.email}
-                      </span>
-                    )}
-                    {c.phone && (
-                      <span className="flex items-center gap-1">
-                        <Phone className="w-3 h-3" /> {c.phone}
-                      </span>
-                    )}
-                  </div>
+                  {c.phone && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                      <Phone className="w-3 h-3 shrink-0" />
+                      <span>{c.phone}</span>
+                    </div>
+                  )}
                 </div>
                 <Badge variant="secondary" className="hidden sm:inline-flex text-xs shrink-0">
                   {c.lead_source}

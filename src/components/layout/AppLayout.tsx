@@ -19,23 +19,10 @@ const navItems = [
 // Show max 5 items in bottom nav, rest go in "more" menu
 const mobileNavItems = navItems.slice(0, 5);
 
-const isIosSafari =
-  typeof window !== "undefined" &&
-  /iphone|ipad|ipod/i.test(navigator.userAgent) &&
-  !(window.navigator as unknown as { standalone?: boolean }).standalone;
-
 export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(
-    () => sessionStorage.getItem("pwa-banner-dismissed") === "true"
-  );
-
-  const dismissBanner = () => {
-    sessionStorage.setItem("pwa-banner-dismissed", "true");
-    setBannerDismissed(true);
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -154,19 +141,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 overflow-auto pb-20 md:pb-0">
-        {isIosSafari && !bannerDismissed && (
-          <div className="flex items-center gap-3 px-4 py-2.5 bg-accent/20 border-b border-border md:hidden">
-            <span className="flex-1 text-sm text-foreground">
-              You're in Safari — open VargaFlow from your Home Screen for the full app.
-            </span>
-            <button onClick={dismissBanner} className="text-muted-foreground shrink-0">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-        {children}
-      </main>
+      <main className="flex-1 overflow-auto pb-20 md:pb-0">{children}</main>
     </div>
   );
 }

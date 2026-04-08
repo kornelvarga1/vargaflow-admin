@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Check, Loader2, Plus, Trash2 } from "lucide-react";
+import { Bell, Check, Loader2, Moon, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { useDarkMode } from "@/hooks/useDarkMode";
+import { requestNotificationPermission, getNotificationPermissionState } from "@/hooks/usePushNotifications";
 
 // ---- My Settings Tab ----
 
@@ -335,6 +338,14 @@ function CustomValuesTab() {
 // ---- Page ----
 
 export default function SettingsPage() {
+  const { isDark, toggle } = useDarkMode();
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  useEffect(() => {
+    getNotificationPermissionState().then(setNotifPermission);
+  }, []);
+
   return (
     <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6 animate-fade-in">
       <div>
@@ -343,6 +354,79 @@ export default function SettingsPage() {
           Manage your personal settings and custom template variables.
         </p>
       </div>
+
+      <Card className="bg-card border-border shadow-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-display">
+            <Moon className="w-4 h-4" />
+            Appearance
+          </CardTitle>
+        </CardHeader>
+        <Separator />
+        <CardContent className="pt-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Dark Mode</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Switch app theme</p>
+            </div>
+            <Switch
+              checked={isDark}
+              onCheckedChange={toggle}
+              className="data-[state=checked]:bg-[#D4860A]"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border shadow-card">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-display">
+            <Bell className="w-4 h-4" />
+            Push Notifications
+          </CardTitle>
+        </CardHeader>
+        <Separator />
+        <CardContent className="pt-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Inbound message alerts</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {notifPermission === "granted"
+                  ? "Notifications are enabled on this device."
+                  : notifPermission === "denied"
+                  ? "Blocked in browser settings — reset site permissions to re-enable."
+                  : notifPermission === "unsupported"
+                  ? "Not supported in this browser."
+                  : "Get notified instantly when a lead replies."}
+              </p>
+            </div>
+            {notifPermission !== "unsupported" && notifPermission !== "denied" && (
+              <Button
+                size="sm"
+                variant={notifPermission === "granted" ? "outline" : "default"}
+                disabled={notifLoading || notifPermission === "granted"}
+                onClick={async () => {
+                  setNotifLoading(true);
+                  const ok = await requestNotificationPermission(ADMIN_BUSINESS_ID);
+                  setNotifPermission(ok ? "granted" : Notification.permission);
+                  if (ok) toast.success("Push notifications enabled");
+                  else toast.error("Could not enable notifications");
+                  setNotifLoading(false);
+                }}
+                className="shrink-0"
+              >
+                {notifLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : notifPermission === "granted" ? (
+                  <><Bell className="w-4 h-4 mr-1.5" />Enabled</>
+                ) : (
+                  <><Bell className="w-4 h-4 mr-1.5" />Enable</>
+                )}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="my_settings">
         <TabsList className="mb-4">

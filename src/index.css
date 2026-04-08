@@ -58,6 +58,54 @@
     --shadow-glow: 0 0 20px hsl(36 90% 50% / 0.1);
     --shadow-card: 0 4px 24px hsl(30 10% 10% / 0.06);
   }
+
+  .dark {
+    --background: 240 3% 11%;
+    --foreground: 0 0% 100%;
+
+    --card: 240 2% 17%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 240 2% 17%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 36 90% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 2% 23%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 2% 23%;
+    --muted-foreground: 240 2% 56%;
+
+    --accent: 240 2% 23%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 2% 23%;
+    --input: 240 2% 23%;
+    --ring: 36 90% 50%;
+
+    --sidebar-background: 240 2% 17%;
+    --sidebar-foreground: 0 0% 70%;
+    --sidebar-primary: 36 90% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 2% 23%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 2% 23%;
+    --sidebar-ring: 36 90% 50%;
+
+    --success: 142 60% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 90% 50%;
+    --warning-foreground: 0 0% 4%;
+    --info: 210 60% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --shadow-card: 0 4px 24px hsl(0 0% 0% / 0.3);
+  }
 }
 
 @layer base {
@@ -129,6 +177,10 @@
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
     background: hsl(0 0% 100% / 0.85);
+  }
+
+  .dark .glass {
+    background: hsl(240 2% 17% / 0.85);
   }
 
   /* Hover lift */

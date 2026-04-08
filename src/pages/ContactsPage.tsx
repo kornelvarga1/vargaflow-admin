@@ -77,10 +77,14 @@ export default function ContactsPage() {
           {filtered.map((c) => (
             <Card key={c.id} className="bg-card border-border hover:border-accent/50 transition-colors cursor-pointer" onClick={() => navigate(`/contacts/${c.id}`)}>
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center shrink-0">
-                  <span className="text-sm font-display font-bold text-accent-foreground">
-                    {c.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                  </span>
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  {/^[+\d]/.test(c.full_name.trim()) ? (
+                    <Phone className="w-4 h-4 text-primary" />
+                  ) : (
+                    <span className="text-sm font-display font-bold text-primary">
+                      {c.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium font-display truncate">{c.full_name}</p>
@@ -100,7 +104,7 @@ export default function ContactsPage() {
                 <Badge variant="secondary" className="hidden sm:inline-flex text-xs shrink-0">
                   {c.lead_source}
                 </Badge>
-                <Badge variant="outline" className="hidden sm:inline-flex text-xs shrink-0 border-accent/40 text-accent-foreground">
+                <Badge variant="outline" className="hidden sm:inline-flex text-xs shrink-0 border-primary/40 text-primary">
                   {stageLabel(c.stage)}
                 </Badge>
                 <DropdownMenu>

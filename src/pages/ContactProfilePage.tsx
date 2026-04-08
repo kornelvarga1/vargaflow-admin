@@ -22,7 +22,6 @@ import {
   Mail,
   Phone,
   User,
-  MapPin,
   Building,
   MessageSquare,
   ArrowRightLeft,
@@ -246,31 +245,51 @@ export default function ContactProfilePage() {
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
-          <ArrowLeft className="w-4 h-4" />
-        </Button>
-        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-          <span className="text-lg font-display font-bold text-primary">
-            {contact.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-display font-bold truncate">{contact.full_name}</h1>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
-            <Badge variant="outline" className="border-primary/40 text-primary">
-              {pipelineLabel}
-            </Badge>
-            <Badge variant="secondary">{stageLabel}</Badge>
+      <div className="space-y-1.5">
+        {/* Row 1: back + avatar + name + action icons */}
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate(-1)}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            {(() => {
+              const name = contact.full_name.trim();
+              const isPhone = !name || /^[+\d]/.test(name);
+              return isPhone ? (
+                <Phone className="w-4 h-4 text-primary" />
+              ) : (
+                <span className="text-sm font-display font-bold text-primary">
+                  {name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                </span>
+              );
+            })()}
           </div>
+          <h1 className="text-xl font-display font-bold truncate flex-1">{contact.full_name}</h1>
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            title="Messages"
+            onClick={() => navigate("/messages", { state: { contactId: contact.id } })}
+          >
+            <MessageSquare className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            title="Move Stage"
+            onClick={() => setMoveDialogOpen(true)}
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+          </Button>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={() => navigate("/messages", { state: { contactId: contact.id } })}>
-            <MessageSquare className="w-4 h-4 mr-1" /> Messages
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setMoveDialogOpen(true)}>
-            <ArrowRightLeft className="w-4 h-4 mr-1" /> Move Stage
-          </Button>
+        {/* Row 2: pipeline + stage badges */}
+        <div className="flex items-center gap-2 pl-1 flex-wrap">
+          <Badge variant="outline" className="border-primary/40 text-primary">
+            {pipelineLabel}
+          </Badge>
+          <Badge variant="secondary">{stageLabel}</Badge>
         </div>
       </div>
 

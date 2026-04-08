@@ -75,6 +75,7 @@ function useConversationContacts() {
         .from("message_queue")
         .select("contact_id, message_content, scheduled_at, sent_at, status, direction")
         .in("contact_id", contactIds)
+        .in("status", ["sent", "received"])
         .order("scheduled_at", { ascending: false })
         .limit(500);
 

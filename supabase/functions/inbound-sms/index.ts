@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const APP_URL = "https://app.vargaflow.com"; // update to actual CRM URL
+
 // Always return TwiML so Twilio doesn't retry on non-200 or missing body
 const twiml = () =>
   new Response("<Response></Response>", {
@@ -36,7 +38,7 @@ serve(async (req) => {
     // 1. Look up business by the Twilio number that received the SMS
     const { data: settings, error: settingsErr } = await supabase
       .from("settings")
-      .select("business_id")
+      .select("business_id, my_phone")
       .eq("twilio_phone_number", to)
       .single();
 
@@ -52,7 +54,7 @@ serve(async (req) => {
 
     const { data: existing } = await supabase
       .from("contacts")
-      .select("id")
+      .select("id, full_name")
       .eq("phone", from)
       .eq("business_id", businessId)
       .single();
@@ -113,6 +115,26 @@ serve(async (req) => {
       });
     } catch (logErr) {
       console.error("[inbound-sms] activity_log insert failed:", logErr);
+    }
+
+    // 5. Notify contractor via SMS
+    try {
+      if (settings.my_phone) {
+        const contactName = existing?.full_name ?? from;
+        const preview = body.slice(0, 100) + (body.length > 100 ? "…" : "");
+        await supabase.from("message_queue").insert({
+          contact_id:      contactId,
+          business_id:     businessId,
+          direction:       "outbound",
+          status:          "pending",
+          message_type:    "sms",
+          message_content: `Reply from ${contactName}: "${preview}"\n${APP_URL}/messages`,
+          scheduled_at:    now,
+          metadata:        { to: settings.my_phone },
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[inbound-sms] contractor notification failed:", notifyErr);
     }
 
     return twiml();

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useCustomValues, replaceCustomValues } from "@/hooks/useCustomValues";
@@ -16,8 +16,8 @@ import {
   Send,
   Loader2,
   Search,
-  User,
   ArrowRight,
+  ArrowLeft,
   Zap,
   Copy,
 } from "lucide-react";
@@ -190,6 +190,7 @@ type FilterType = "all" | "unread" | "sent";
 
 export default function MessageQueuePage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
     (location.state as { contactId?: string } | null)?.contactId ?? null
   );
@@ -212,7 +213,7 @@ export default function MessageQueuePage() {
   // Filter contacts
   const filteredContacts = contacts.filter((c) => {
     if (search && !c.full_name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filter === "unread") return c.hasUnread;
+    if (filter === "unread") return c.hasUnread && !seenIds.has(c.id);
     return true;
   });
 
@@ -222,13 +223,6 @@ export default function MessageQueuePage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  // Auto-select first contact (or pre-selected from navigation state)
-  useEffect(() => {
-    if (!selectedContactId && contacts.length > 0) {
-      selectContact(contacts[0].id);
-    }
-  }, [contacts, selectedContactId]);
 
   const stageLabel = (key: string, pipeline: string) =>
     ALL_STAGES.find((s) => s.key === key && s.pipeline === pipeline)?.label || key;
@@ -245,8 +239,8 @@ export default function MessageQueuePage() {
       </div>
 
       <div className="flex flex-1 min-h-0">
-        {/* Left Panel: Contact List */}
-        <div className="w-80 lg:w-96 border-r border-border flex flex-col shrink-0">
+        {/* Left Panel: Contact List — hidden on mobile when a conversation is open */}
+        <div className={`${selectedContactId ? "hidden md:flex" : "flex"} w-full md:w-80 lg:w-96 border-r border-border flex-col shrink-0`}>
           {/* Search + Filter */}
           <div className="p-3 space-y-2 border-b border-border">
             <div className="relative">
@@ -326,8 +320,8 @@ export default function MessageQueuePage() {
           </ScrollArea>
         </div>
 
-        {/* Right Panel: Conversation */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* Right Panel: Conversation — full screen on mobile */}
+        <div className={`${selectedContactId ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0`}>
           {!selectedContactId ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
               <div className="text-center">
@@ -338,15 +332,22 @@ export default function MessageQueuePage() {
           ) : (
             <>
               {/* Contact Banner */}
-              {selectedContact && (
-                <div className="p-3 border-b border-border bg-secondary/20 flex items-center gap-3 shrink-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-display font-semibold text-sm">{selectedContact.full_name}</p>
-                      {selectedContact.phone && (
-                        <span className="text-xs text-muted-foreground">{selectedContact.phone}</span>
-                      )}
-                    </div>
+              <div className="p-3 border-b border-border bg-secondary/20 flex items-center gap-3 shrink-0">
+                {/* Back button — mobile only */}
+                <button
+                  className="md:hidden shrink-0 text-muted-foreground"
+                  onClick={() => setSelectedContactId(null)}
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-display font-semibold text-sm">{selectedContact?.full_name ?? "..."}</p>
+                    {selectedContact?.phone && (
+                      <span className="text-xs text-muted-foreground">{selectedContact.phone}</span>
+                    )}
+                  </div>
+                  {selectedContact && (
                     <div className="flex items-center gap-2 mt-0.5">
                       <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">
                         {selectedContact.pipeline === "Onboarding" ? "Onboarding" : "Sales"}
@@ -361,14 +362,16 @@ export default function MessageQueuePage() {
                         </Badge>
                       )}
                     </div>
-                  </div>
+                  )}
+                </div>
+                {selectedContact && (
                   <Link to={`/contacts/${selectedContact.id}`}>
                     <Button variant="ghost" size="sm" className="text-xs">
                       Profile <ArrowRight className="w-3 h-3 ml-1" />
                     </Button>
                   </Link>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Messages */}
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">

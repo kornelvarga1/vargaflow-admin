@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Check, Loader2, Plus, Building2, ArrowLeft } from "lucide-react";
+import { Check, Loader2, Plus, Building2, ArrowLeft, ListChecks } from "lucide-react";
+import { ClientSequencesTab } from "./SequencesPage";
 import { toast } from "sonner";
 
 // ---- Types ----
@@ -394,6 +395,10 @@ export default function ClientsPage() {
               <TabsList className="mb-4">
                 <TabsTrigger value="custom_values">Custom Values</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
+                <TabsTrigger value="sequences">
+                  <ListChecks className="w-3.5 h-3.5 mr-1.5" />
+                  Sequences
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="custom_values">
@@ -418,6 +423,15 @@ export default function ClientsPage() {
                     <SettingsTab businessId={selected.id} />
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="sequences">
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Overrides apply only to this business. Steps without an override use the global template.
+                  </p>
+                  <ClientSequencesTab businessId={selected.id} />
+                </div>
               </TabsContent>
             </Tabs>
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useCustomValues, replaceCustomValues } from "@/hooks/useCustomValues";
@@ -73,8 +73,9 @@ function useConversationContacts() {
       // a limited set ordered desc and deduping client-side
       const { data: recentMessages, error } = await supabase
         .from("message_queue")
-        .select("contact_id, message_content, scheduled_at, sent_at, status")
+        .select("contact_id, message_content, scheduled_at, sent_at, status, direction")
         .in("contact_id", contactIds)
+        .neq("message_type", "internal_sms")
         .order("scheduled_at", { ascending: false })
         .limit(500);
 
@@ -104,7 +105,7 @@ function useConversationContacts() {
           stage: contact.stage,
           lastMessage: latest.message_content.slice(0, 60) + (latest.message_content.length > 60 ? "…" : ""),
           lastMessageAt: latest.sent_at || latest.scheduled_at,
-          hasUnread: false,
+          hasUnread: latest.direction === "inbound" && latest.status === "received",
           messageCount: 0,
         });
       }
@@ -128,6 +129,7 @@ function useConversation(contactId: string | null) {
         .select("*")
         .eq("contact_id", contactId!)
         .in("status", ["sent", "received"])
+        .neq("message_type", "internal_sms")
         .order("scheduled_at", { ascending: true });
 
       if (error) throw error;
@@ -188,7 +190,11 @@ type FilterType = "all" | "unread" | "sent";
 // --- Main Component ---
 
 export default function MessageQueuePage() {
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+  const location = useLocation();
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(
+    (location.state as { contactId?: string } | null)?.contactId ?? null
+  );
+  const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
   const { data: contacts = [], isLoading: contactsLoading } = useConversationContacts();
@@ -196,6 +202,11 @@ export default function MessageQueuePage() {
   const { data: activeSeq } = useContactActiveSequence(selectedContactId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
+  const selectContact = (id: string) => {
+    setSelectedContactId(id);
+    setSeenIds((prev) => new Set([...prev, id]));
+  };
 
   const selectedContact = contacts.find((c) => c.id === selectedContactId);
 
@@ -213,10 +224,10 @@ export default function MessageQueuePage() {
     }
   }, [messages]);
 
-  // Auto-select first contact
+  // Auto-select first contact (or pre-selected from navigation state)
   useEffect(() => {
     if (!selectedContactId && contacts.length > 0) {
-      setSelectedContactId(contacts[0].id);
+      selectContact(contacts[0].id);
     }
   }, [contacts, selectedContactId]);
 
@@ -277,37 +288,40 @@ export default function MessageQueuePage() {
               </div>
             ) : (
               <div>
-                {filteredContacts.map((c) => (
-                  <button
-                    key={c.id}
-                    className={`w-full text-left p-3 flex items-start gap-3 hover:bg-secondary/50 transition-colors border-b border-border/50 ${
-                      selectedContactId === c.id ? "bg-secondary" : ""
-                    }`}
-                    onClick={() => setSelectedContactId(c.id)}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <span className="text-xs font-display font-bold text-primary">
-                        {c.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <p className={`text-sm truncate ${c.hasUnread ? "font-bold" : "font-medium"}`}>
-                          {c.full_name}
-                        </p>
-                        <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
-                          {formatDistanceToNow(new Date(c.lastMessageAt), { addSuffix: false })}
+                {filteredContacts.map((c) => {
+                  const isUnread = c.hasUnread && !seenIds.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      className={`w-full text-left p-3 flex items-start gap-3 hover:bg-secondary/50 transition-colors border-b border-border/50 ${
+                        selectedContactId === c.id ? "bg-secondary" : ""
+                      }`}
+                      onClick={() => selectContact(c.id)}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-display font-bold text-primary">
+                          {c.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                         </span>
                       </div>
-                      <p className={`text-xs truncate mt-0.5 ${c.hasUnread ? "text-foreground" : "text-muted-foreground"}`}>
-                        {c.lastMessage}
-                      </p>
-                    </div>
-                    {c.hasUnread && (
-                      <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 mt-1" />
-                    )}
-                  </button>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className={`text-sm truncate ${isUnread ? "font-bold" : "font-medium"}`}>
+                            {c.full_name}
+                          </p>
+                          <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                            {formatDistanceToNow(new Date(c.lastMessageAt), { addSuffix: false })}
+                          </span>
+                        </div>
+                        <p className={`text-xs truncate mt-0.5 ${isUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          {c.lastMessage}
+                        </p>
+                      </div>
+                      {isUnread && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0 mt-1" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </ScrollArea>

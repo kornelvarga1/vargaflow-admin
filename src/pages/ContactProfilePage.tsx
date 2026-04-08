@@ -265,8 +265,8 @@ export default function ContactProfilePage() {
           </div>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={() => setSmsDialogOpen(true)}>
-            <MessageSquare className="w-4 h-4 mr-1" /> Send SMS
+          <Button variant="outline" size="sm" onClick={() => navigate("/messages", { state: { contactId: contact.id } })}>
+            <MessageSquare className="w-4 h-4 mr-1" /> Messages
           </Button>
           <Button variant="outline" size="sm" onClick={() => setMoveDialogOpen(true)}>
             <ArrowRightLeft className="w-4 h-4 mr-1" /> Move Stage

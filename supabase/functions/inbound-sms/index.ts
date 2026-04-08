@@ -127,7 +127,7 @@ serve(async (req) => {
           business_id:     businessId,
           direction:       "outbound",
           status:          "pending",
-          message_type:    "sms",
+          message_type:    "internal_sms",
           message_content: `Reply from ${contactName}: "${preview}"\n${APP_URL}/messages`,
           scheduled_at:    now,
           metadata:        { to: settings.my_phone },

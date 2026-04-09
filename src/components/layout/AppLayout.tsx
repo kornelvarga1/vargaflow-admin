@@ -4,7 +4,6 @@ import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, ListChecks, Bu
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { useConversationOpen } from "@/context/ConversationContext";
-import logo from "@/assets/logo.png";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -34,8 +33,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex h-dvh overflow-hidden">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-60 flex-col border-r border-border bg-sidebar shrink-0 border-t-[3px] border-t-primary">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-border">
-          <img src={logo} alt="VargaFlow" className="h-9" />
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+          <img src="/favicon.png" alt="VargaFlow Admin" className="w-6 h-6 rounded-md shrink-0" />
+          <span className="text-[17px] font-display font-bold text-sidebar-foreground tracking-tight">VargaFlow Admin</span>
         </div>
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => (
@@ -57,7 +57,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="px-5 py-3 border-t border-border flex items-center justify-between">
-          <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">VargaFlow</p>
+          <p className="text-[10px] text-muted-foreground/50 font-medium tracking-wider uppercase">VargaFlow Admin</p>
           <Button
             variant="ghost"
             size="icon"
@@ -79,7 +79,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           />
           <aside className="relative w-64 bg-sidebar border-r border-border flex flex-col animate-slide-in-left">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <img src={logo} alt="VargaFlow" className="h-8" />
+              <div className="flex items-center gap-2">
+                <img src="/favicon.png" alt="VargaFlow Admin" className="w-6 h-6 rounded-md shrink-0" />
+                <span className="text-[17px] font-display font-bold text-sidebar-foreground tracking-tight">VargaFlow Admin</span>
+              </div>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setMobileMenuOpen(false)}>
                 <X className="w-4 h-4" />
               </Button>

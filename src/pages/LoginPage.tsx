@@ -6,8 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, LogIn } from "lucide-react";
-import logo from "@/assets/logo.png";
-
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,8 +34,9 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-6">
-        <div className="flex justify-center">
-          <img src={logo} alt="VargaFlow" className="h-10" />
+        <div className="flex flex-col items-center gap-3">
+          <img src="/favicon.png" alt="VargaFlow Admin" className="w-12 h-12 rounded-xl" />
+          <h1 className="text-2xl font-display font-bold text-primary">VargaFlow Admin</h1>
         </div>
 
         <Card className="bg-card border-border shadow-card">

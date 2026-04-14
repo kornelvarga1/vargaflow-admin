@@ -6,21 +6,41 @@ export interface DashboardStats {
   salesByStage: Record<string, number>;
   onboardingByStage: Record<string, number>;
   pendingMessages: number;
-  sentMessages: number;
+  sentMessagesThisMonth: number;
   activeSequences: number;
+  callsBookedThisMonth: number;
+  clientsClosedThisMonth: number;
 }
 
 export function useDashboardStats() {
   return useQuery({
     queryKey: ["dashboard_stats"],
     queryFn: async () => {
-      const [contactsRes, messagesRes] = await Promise.all([
+      const monthAgo = new Date();
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      const monthAgoISO = monthAgo.toISOString();
+
+      const [contactsRes, pendingRes, sentRes, activityRes] = await Promise.all([
         supabase.from("contacts").select("id, pipeline, stage").is("business_id", null),
-        supabase.from("message_queue").select("status").is("business_id", null),
+        supabase
+          .from("message_queue")
+          .select("id", { count: "exact", head: true })
+          .is("business_id", null)
+          .eq("status", "pending"),
+        supabase
+          .from("message_queue")
+          .select("id", { count: "exact", head: true })
+          .is("business_id", null)
+          .eq("status", "sent")
+          .gte("sent_at", monthAgoISO),
+        supabase
+          .from("activity_log")
+          .select("activity_type, description, created_at")
+          .eq("activity_type", "stage_changed")
+          .gte("created_at", monthAgoISO),
       ]);
 
       const contacts = contactsRes.data || [];
-      const messages = messagesRes.data || [];
       const contactIds = contacts.map((c) => c.id);
 
       const activeEnrollmentsRes = contactIds.length > 0
@@ -42,15 +62,26 @@ export function useDashboardStats() {
         }
       }
 
+      // Count calls booked and clients closed this month from activity log
+      const stageActivities = activityRes.data || [];
+      let callsBooked = 0;
+      let clientsClosed = 0;
+      for (const a of stageActivities) {
+        if (a.description?.includes("Zoom Call Booked")) callsBooked++;
+        if (a.description?.includes("Client Closed")) clientsClosed++;
+      }
+
       return {
         totalContacts: contacts.length,
         salesByStage,
         onboardingByStage,
-        pendingMessages: messages.filter((m) => m.status === "pending").length,
-        sentMessages: messages.filter((m) => m.status === "sent").length,
+        pendingMessages: pendingRes.count ?? 0,
+        sentMessagesThisMonth: sentRes.count ?? 0,
         activeSequences: activeEnrollmentsRes.count ?? 0,
+        callsBookedThisMonth: callsBooked,
+        clientsClosedThisMonth: clientsClosed,
       } as DashboardStats;
     },
-    refetchInterval: 30000, // refresh every 30s
+    refetchInterval: 30000,
   });
 }

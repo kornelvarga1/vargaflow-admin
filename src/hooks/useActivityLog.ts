@@ -20,10 +20,12 @@ export function useActivityLog(limit = 20) {
       const internalIds = (internalContacts || []).map((c) => c.id);
       if (internalIds.length === 0) return [] as ActivityLog[];
 
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from("activity_log")
         .select("*, contacts(full_name)")
         .in("contact_id", internalIds)
+        .gte("created_at", oneWeekAgo)
         .order("created_at", { ascending: false })
         .limit(limit);
       if (error) throw error;

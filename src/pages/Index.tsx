@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import NeedsAttentionSection from "@/components/dashboard/NeedsAttentionSection";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
@@ -5,6 +6,7 @@ import { useActivityLog } from "@/hooks/useActivityLog";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Users,
@@ -21,6 +23,8 @@ import {
   Mail,
   CheckCircle,
   Activity,
+  CalendarCheck,
+  Trophy,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -34,7 +38,8 @@ const activityIcons: Record<string, typeof Activity> = {
 
 export default function Index() {
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
-  const { data: activities = [], isLoading: actLoading } = useActivityLog(15);
+  const { data: activities = [], isLoading: actLoading } = useActivityLog(50);
+  const [activityCount, setActivityCount] = useState(8);
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6 animate-slide-up">
@@ -53,7 +58,7 @@ export default function Index() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 stagger-in">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4 stagger-in">
             <StatCard
               icon={Users}
               label="Total Contacts"
@@ -69,8 +74,8 @@ export default function Index() {
             />
             <StatCard
               icon={Send}
-              label="Messages Sent"
-              value={stats?.sentMessages ?? 0}
+              label="Messages Sent This Month"
+              value={stats?.sentMessagesThisMonth ?? 0}
               to="/messages"
             />
             <StatCard
@@ -78,6 +83,19 @@ export default function Index() {
               label="Active Sequences"
               value={stats?.activeSequences ?? 0}
               to="/sequences"
+            />
+            <StatCard
+              icon={CalendarCheck}
+              label="Calls Booked This Month"
+              value={stats?.callsBookedThisMonth ?? 0}
+              to="/pipeline/sales"
+            />
+            <StatCard
+              icon={Trophy}
+              label="Clients Closed This Month"
+              value={stats?.clientsClosedThisMonth ?? 0}
+              to="/pipeline/onboarding"
+              highlight={!!stats?.clientsClosedThisMonth}
             />
           </div>
 
@@ -121,7 +139,7 @@ export default function Index() {
             </p>
           ) : (
             <div className="space-y-3">
-              {activities.map((a) => {
+              {activities.slice(0, activityCount).map((a) => {
                 const Icon = activityIcons[a.activity_type] || Activity;
                 return (
                   <div key={a.id} className="flex items-start gap-3">
@@ -142,6 +160,16 @@ export default function Index() {
                   </div>
                 );
               })}
+              {activities.length > activityCount && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground"
+                  onClick={() => setActivityCount((c) => c + 8)}
+                >
+                  Show more ({activities.length - activityCount} remaining)
+                </Button>
+              )}
             </div>
           )}
         </CardContent>

@@ -32,7 +32,7 @@ serve(async (req) => {
     const myPhone = settings.my_phone || "";
     const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
-    const onboardingFormLink = settings.onboarding_form_link || "[onboarding form link]";
+    const onboardingFormLink = settings.onboarding_form_link || "https://vargaflow.com/onboarding-form";
 
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;

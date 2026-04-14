@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, ListChecks, Building2, Menu, X, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Kanban, Settings, MessageSquare, ListChecks, Building2, Menu, X, LogOut, FileText } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { useConversationOpen } from "@/context/ConversationContext";
@@ -12,6 +12,7 @@ const navItems = [
   { to: "/contacts", icon: Users, label: "Contacts" },
   { to: "/sequences", icon: ListChecks, label: "Sequences" },
   { to: "/clients", icon: Building2, label: "Clients" },
+  { to: "/onboarding-submissions", icon: FileText, label: "Submissions" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

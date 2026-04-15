@@ -180,3 +180,9 @@ entrypoint = "./functions/send-push-notification/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/send-manual-sms/index.ts"
+
+[functions.enroll-outreach]
+enabled = true
+verify_jwt = false
+import_map = "./functions/enroll-outreach/deno.json"
+entrypoint = "./functions/enroll-outreach/index.ts"

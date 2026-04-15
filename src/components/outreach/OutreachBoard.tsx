@@ -1,0 +1,292 @@
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
+import { useUpdateContact, type Contact, OUTREACH_STAGES } from "@/hooks/useContacts";
+import { logActivity } from "@/hooks/useActivityLog";
+import { supabase } from "@/lib/supabase";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { GripVertical, MoreHorizontal, Phone, ThumbsUp, CalendarCheck, Ban, MessageSquareOff, Search } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useAddToDNC } from "@/hooks/useDNC";
+import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
+
+const ANGLE_LABEL: Record<string, string> = {
+  free_website: "Free Website",
+  leads_incentive: "Leads Incentive",
+};
+const ANGLE_CLASS: Record<string, string> = {
+  free_website: "bg-blue-500/15 text-blue-500 border-blue-500/30",
+  leads_incentive: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
+};
+
+interface LastInbound {
+  contact_id: string;
+  message_content: string;
+  created_at: string;
+}
+
+function useLastInboundByContact(contactIds: string[]) {
+  return useQuery({
+    queryKey: ["last-inbound", contactIds.sort().join(",")],
+    enabled: contactIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("message_queue")
+        .select("contact_id, message_content, created_at")
+        .eq("direction", "inbound")
+        .in("contact_id", contactIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      const byContact = new Map<string, LastInbound>();
+      for (const row of (data ?? []) as LastInbound[]) {
+        if (!byContact.has(row.contact_id)) byContact.set(row.contact_id, row);
+      }
+      return byContact;
+    },
+  });
+}
+
+interface Props {
+  contacts: Contact[];
+  isLoading: boolean;
+}
+
+export default function OutreachBoard({ contacts, isLoading }: Props) {
+  const navigate = useNavigate();
+  const updateContact = useUpdateContact();
+  const addToDNC = useAddToDNC();
+  const [angleFilter, setAngleFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const s = search.toLowerCase();
+    return contacts.filter((c) => {
+      const matchAngle = angleFilter === "all" || c.outreach_angle === angleFilter;
+      const matchSearch =
+        !s ||
+        c.full_name.toLowerCase().includes(s) ||
+        c.phone?.toLowerCase().includes(s) ||
+        c.email?.toLowerCase().includes(s);
+      return matchAngle && matchSearch;
+    });
+  }, [contacts, angleFilter, search]);
+
+  const ids = useMemo(() => filtered.map((c) => c.id), [filtered]);
+  const { data: lastInbound } = useLastInboundByContact(ids);
+
+  const columns = OUTREACH_STAGES.map((stage) => ({
+    ...stage,
+    contacts: filtered.filter((c) => c.stage === stage.key),
+  }));
+
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+    const contactId = result.draggableId;
+    const newStage = result.destination.droppableId;
+    const contact = contacts.find((c) => c.id === contactId);
+    if (!contact || contact.stage === newStage) return;
+    try {
+      await updateContact.mutateAsync({
+        id: contactId,
+        stage: newStage,
+        stage_entered_at: new Date().toISOString(),
+      });
+      const stageLabel = OUTREACH_STAGES.find((s) => s.key === newStage)?.label || newStage;
+      await logActivity("stage_changed", `moved to ${stageLabel}`, contactId);
+      toast.success(`${contact.full_name} → ${stageLabel}`);
+    } catch {
+      toast.error("Failed to move contact");
+    }
+  };
+
+  const moveTo = async (contact: Contact, stage: string) => {
+    try {
+      await updateContact.mutateAsync({
+        id: contact.id,
+        stage,
+        stage_entered_at: new Date().toISOString(),
+      });
+      await logActivity("stage_changed", `moved to ${stage}`, contact.id);
+      toast.success(`${contact.full_name} → ${stage}`);
+    } catch {
+      toast.error("Failed to update stage");
+    }
+  };
+
+  const handleDNC = async (contact: Contact) => {
+    if (!contact.phone) {
+      toast.error("Contact has no phone number");
+      return;
+    }
+    try {
+      await addToDNC.mutateAsync({
+        phone: contact.phone,
+        reason: "manual",
+        source_workflow: contact.outreach_angle ?? null,
+        contact_id: contact.id,
+      });
+      toast.success(`${contact.full_name} DNC'd`, {
+        description: "Sequences stopped, stage → Not Interested.",
+      });
+    } catch (err) {
+      toast.error("Failed to DNC", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex items-center gap-3 flex-wrap mb-4">
+        <div className="relative max-w-xs flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-9"
+          />
+        </div>
+        <Select value={angleFilter} onValueChange={setAngleFilter}>
+          <SelectTrigger className="w-[180px] h-9">
+            <SelectValue placeholder="All angles" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All angles</SelectItem>
+            <SelectItem value="free_website">Free Website</SelectItem>
+            <SelectItem value="leads_incentive">Leads Incentive</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="text-xs text-muted-foreground">
+          {filtered.length} of {contacts.length}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex gap-3 overflow-x-auto flex-1 pb-4">
+          {OUTREACH_STAGES.map((s) => (
+            <div key={s.key} className="w-64 md:w-72 shrink-0 bg-secondary/50 rounded-lg animate-pulse h-64" />
+          ))}
+        </div>
+      ) : (
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="flex gap-3 md:gap-4 overflow-x-auto flex-1 pb-4 snap-x snap-mandatory md:snap-none -mx-4 px-4 md:mx-0 md:px-0">
+            {columns.map((col) => (
+              <div key={col.key} className="w-64 md:w-72 shrink-0 snap-start flex flex-col">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-display font-semibold">{col.label}</h3>
+                    <Badge variant="secondary" className="text-xs h-5 min-w-[1.25rem] flex items-center justify-center">
+                      {col.contacts.length}
+                    </Badge>
+                  </div>
+                </div>
+
+                <Droppable droppableId={col.key}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`flex-1 rounded-lg p-2 space-y-2 min-h-[200px] transition-colors ${
+                        snapshot.isDraggingOver ? "bg-accent/30 border border-accent/50" : "bg-secondary/30"
+                      }`}
+                    >
+                      {col.contacts.map((contact, idx) => {
+                        const inbound = lastInbound?.get(contact.id);
+                        const angle = contact.outreach_angle ?? "";
+                        return (
+                          <Draggable key={contact.id} draggableId={contact.id} index={idx}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`group ${snapshot.isDragging ? "z-50" : ""}`}
+                              >
+                                <Card
+                                  className={`bg-card border-border cursor-pointer transition-all ${
+                                    snapshot.isDragging ? "shadow-glow rotate-1" : "hover:border-accent/40"
+                                  }`}
+                                  onClick={() => navigate(`/contacts/${contact.id}`)}
+                                >
+                                  <CardContent className="p-3 flex items-start gap-2">
+                                    <div
+                                      {...provided.dragHandleProps}
+                                      className="mt-0.5 opacity-0 group-hover:opacity-50 transition-opacity cursor-grab"
+                                    >
+                                      <GripVertical className="w-4 h-4 text-muted-foreground" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <MoreHorizontal className="w-3.5 h-3.5" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                            <DropdownMenuItem onClick={() => moveTo(contact, "Interested – Positive Reply")}>
+                                              <ThumbsUp className="w-4 h-4 mr-2" /> Mark Interested
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => moveTo(contact, "Follow-up")}>
+                                              <MessageSquareOff className="w-4 h-4 mr-2" /> Move to Follow-up
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => moveTo(contact, "Appt Set")}>
+                                              <CalendarCheck className="w-4 h-4 mr-2" /> Mark Appt Set
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem className="text-destructive" onClick={() => handleDNC(contact)}>
+                                              <Ban className="w-4 h-4 mr-2" /> DNC
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                      {contact.phone && (
+                                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground">
+                                          <Phone className="w-3 h-3" />
+                                          <span className="truncate">{contact.phone}</span>
+                                        </div>
+                                      )}
+                                      {angle && (
+                                        <Badge variant="outline" className={`text-[10px] mt-1.5 h-4 ${ANGLE_CLASS[angle] ?? ""}`}>
+                                          {ANGLE_LABEL[angle] ?? angle}
+                                        </Badge>
+                                      )}
+                                      {inbound && (
+                                        <div className="mt-1.5 text-[11px] text-muted-foreground">
+                                          <p className="line-clamp-2 leading-snug">"{inbound.message_content}"</p>
+                                          <p className="text-[10px] mt-0.5 opacity-70">
+                                            {formatDistanceToNow(new Date(inbound.created_at), { addSuffix: true })}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              </div>
+                            )}
+                          </Draggable>
+                        );
+                      })}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            ))}
+          </div>
+        </DragDropContext>
+      )}
+    </div>
+  );
+}

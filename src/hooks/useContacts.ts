@@ -32,11 +32,22 @@ export const ONBOARDING_STAGES = [
   { key: "Client Churned", label: "Client Churned" },
 ] as const;
 
+export const OUTREACH_STAGES = [
+  { key: "Replied", label: "Replied" },
+  { key: "Interested – Positive Reply", label: "Interested 🔥" },
+  { key: "Follow-up", label: "Follow-up" },
+  { key: "Not Interested", label: "Not Interested" },
+  { key: "Appt Set", label: "Appt Set 📅" },
+  { key: "Stale", label: "Stale" },
+] as const;
+
 export const LEAD_SOURCES = [
   "Facebook Ads",
   "Google Ads",
   "Referral",
   "Cold Outreach",
+  "Outreach — Free Website",
+  "Outreach — Leads",
   "Website",
   "Other",
 ] as const;

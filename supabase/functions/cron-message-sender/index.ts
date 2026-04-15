@@ -6,26 +6,62 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TWILIO_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH = Deno.env.get("TWILIO_AUTH_TOKEN")!;
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
+const OUTREACH_TZ = Deno.env.get("OUTREACH_TIMEZONE") ?? "America/New_York";
 
 const MAX_RETRIES = 3;
+const OUTREACH_PIPELINE = "Outreach";
 
-// Cache Twilio numbers per business_id within a single cron run
+// Inlined from _shared/outreach.ts — kept here because this function is deployed
+// without a shared-folder bundle. Keep signatures in sync with _shared/outreach.ts.
+function isWithinSendWindow(
+  settings: { send_window_start: number; send_window_end: number },
+  now: Date,
+  timeZone: string,
+): boolean {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone,
+    }).format(now),
+  );
+  return hour >= settings.send_window_start && hour < settings.send_window_end;
+}
+
+// Fail-closed: on lookup error, treat as DNC.
+async function isDNC(supabase: any, phone: string): Promise<boolean> {
+  if (!phone) return false;
+  const { data, error } = await supabase
+    .from("dnc_list")
+    .select("id")
+    .eq("phone", phone)
+    .maybeSingle();
+  if (error) {
+    console.error(`[dnc] lookup error for ${phone}:`, error.message);
+    return true;
+  }
+  return !!data;
+}
+
+// Cache Twilio numbers per business_id within a single cron run.
+// Null business_id (CRM/admin/outreach context) → use the settings row where business_id IS NULL.
 const twilioNumberCache: Record<string, string> = {};
+const NULL_BIZ_KEY = "__null_business__";
 
 async function getTwilioNumber(
   supabase: ReturnType<typeof createClient>,
-  business_id: string
+  business_id: string | null
 ): Promise<string | null> {
-  if (twilioNumberCache[business_id]) return twilioNumberCache[business_id];
+  const key = business_id ?? NULL_BIZ_KEY;
+  if (twilioNumberCache[key]) return twilioNumberCache[key];
 
-  const { data } = await supabase
-    .from("settings")
-    .select("twilio_phone_number")
-    .eq("business_id", business_id)
-    .single();
+  const base = supabase.from("settings").select("twilio_phone_number");
+  const { data } = business_id
+    ? await base.eq("business_id", business_id).maybeSingle()
+    : await base.is("business_id", null).limit(1).maybeSingle();
 
-  const number = data?.twilio_phone_number ?? null;
-  if (number) twilioNumberCache[business_id] = number;
+  const number = (data as any)?.twilio_phone_number ?? null;
+  if (number) twilioNumberCache[key] = number;
   return number;
 }
 
@@ -106,10 +142,50 @@ serve(async (_req) => {
   try {
     const now = new Date().toISOString();
 
-    // Grab up to 50 pending messages due now, oldest first
+    // Load outreach settings (send window + per-hour rate cap). Single-user tool: first row wins.
+    let sendWindow = { send_window_start: 9, send_window_end: 19 };
+    let ratePerHour = 60;
+    try {
+      const { data: settingsRow } = await supabase
+        .from("settings")
+        .select("send_window_start, send_window_end, outbound_rate_per_hour")
+        .limit(1)
+        .maybeSingle();
+      if (settingsRow) {
+        sendWindow = {
+          send_window_start: settingsRow.send_window_start ?? 9,
+          send_window_end: settingsRow.send_window_end ?? 19,
+        };
+        ratePerHour = settingsRow.outbound_rate_per_hour ?? 60;
+      }
+    } catch (e) {
+      console.warn("[cron] settings fetch failed, using defaults:", e);
+    }
+
+    const withinOutreachWindow = isWithinSendWindow(sendWindow, new Date(), OUTREACH_TZ);
+
+    // Count outreach SMS sent in the last hour so we can cap how many more we send this tick.
+    let outreachSentLastHour = 0;
+    {
+      const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+      const { count } = await supabase
+        .from("message_queue")
+        .select("id, contact:contacts!inner(pipeline)", { count: "exact", head: true })
+        .eq("message_type", "sms")
+        .eq("status", "sent")
+        .eq("contact.pipeline", OUTREACH_PIPELINE)
+        .gte("sent_at", hourAgo);
+      outreachSentLastHour = count ?? 0;
+    }
+    let outreachBudget = Math.max(0, ratePerHour - outreachSentLastHour);
+    console.log(
+      `[cron] outreach window=${withinOutreachWindow} sentLastHr=${outreachSentLastHour} budget=${outreachBudget}/${ratePerHour}`,
+    );
+
+    // Grab up to 50 pending messages due now, oldest first. Join contacts to know pipeline/angle per row.
     const { data: pendingMessages, error: pendingError } = await supabase
       .from("message_queue")
-      .select("*")
+      .select("*, contact:contacts(pipeline, outreach_angle)")
       .eq("status", "pending")
       .lte("scheduled_at", now)
       .order("scheduled_at", { ascending: true })
@@ -120,7 +196,7 @@ serve(async (_req) => {
     // Also pick up failed messages eligible for retry (retry_count < MAX_RETRIES, backoff elapsed)
     const { data: retryMessages, error: retryError } = await supabase
       .from("message_queue")
-      .select("*")
+      .select("*, contact:contacts(pipeline, outreach_angle)")
       .eq("status", "failed")
       .lt("metadata->>retry_count", MAX_RETRIES)
       .lte("metadata->>retry_after", now)
@@ -152,20 +228,65 @@ serve(async (_req) => {
 
       processingIds.push(msg.id);
 
+      const isOutreach = msg.contact?.pipeline === OUTREACH_PIPELINE;
+      const releaseProcessing = (newStatus: string) =>
+        supabase.from("message_queue").update({ status: newStatus }).eq("id", msg.id);
+      const dropProcessingId = () => {
+        const idx = processingIds.indexOf(msg.id);
+        if (idx !== -1) processingIds.splice(idx, 1);
+      };
+
+      // Outreach-only guardrails (SMS). CRM flows bypass these entirely.
+      if (isOutreach && (msg.message_type === "sms" || msg.message_type === "internal_sms")) {
+        // 1. Send window — leave pending so it retries on a later tick inside the window.
+        if (!withinOutreachWindow) {
+          await releaseProcessing("pending");
+          dropProcessingId();
+          continue;
+        }
+        // 2. Per-hour rate cap — leave pending; next tick will reassess budget.
+        if (outreachBudget <= 0) {
+          await releaseProcessing("pending");
+          dropProcessingId();
+          continue;
+        }
+        // 3. Race guard — re-fetch contact_sequences.status immediately before send.
+        //    inbound-sms may have stopped the sequence since this row was queued.
+        if (msg.contact_sequence_id) {
+          const { data: cs } = await supabase
+            .from("contact_sequences")
+            .select("status")
+            .eq("id", msg.contact_sequence_id)
+            .maybeSingle();
+          if (cs && cs.status !== "active") {
+            await releaseProcessing("skipped_stopped");
+            dropProcessingId();
+            continue;
+          }
+        }
+        // 4. DNC suppression (fail-closed).
+        const toCheck = msg.to_phone ?? msg.metadata?.to;
+        if (toCheck && (await isDNC(supabase, toCheck))) {
+          await releaseProcessing("skipped_dnc");
+          dropProcessingId();
+          continue;
+        }
+      }
+
       try {
         if (msg.message_type === "sms" || msg.message_type === "internal_sms") {
           // SMS: to_phone first, fall back to metadata.to
           const to = msg.to_phone ?? msg.metadata?.to;
           if (!to) throw new Error(`No phone number for message ${msg.id}`);
 
-          const fromNumber = msg.business_id
-            ? await getTwilioNumber(supabase, msg.business_id)
-            : null;
+          const fromNumber = await getTwilioNumber(supabase, msg.business_id ?? null);
 
           const from = fromNumber ?? Deno.env.get("TWILIO_PHONE_NUMBER");
           if (!from) throw new Error(`No Twilio from-number for business ${msg.business_id}`);
 
           await sendSMS(to, from, msg.message_content);
+
+          if (isOutreach) outreachBudget--;
 
           await supabase
             .from("message_queue")

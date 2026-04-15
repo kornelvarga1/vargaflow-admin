@@ -3,6 +3,52 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const APP_URL = "https://app.vargaflow.com"; // update to actual CRM URL
 
+const OUTREACH_PIPELINE = "Outreach";
+
+// Stages we must NOT overwrite with 'Replied' — manual moves win.
+const PROTECTED_REPLIED_STAGES = new Set([
+  "Interested – Positive Reply",
+  "Follow-up",
+  "Appt Set",
+]);
+
+const OUTREACH_ANGLE_LABEL: Record<string, string> = {
+  free_website: "Free Website",
+  leads_incentive: "Leads Incentive",
+};
+
+// Inlined from _shared/outreach.ts (edge-function bundler doesn't follow _shared).
+// Keep in sync with supabase/functions/_shared/outreach.ts.
+const NEGATIVE_KEYWORDS = [
+  "byebye", "bye bye", "stop", "not interested", "no thanks",
+  "fuck off", "f off", "fuck you", "remove", "unsubscribe", "dnc",
+  "wrong number", "lose my number", "don't text", "do not text",
+];
+const REGEX_SPECIALS = /[.*+?^${}()|[\]\\]/g;
+const NEGATIVE_PATTERNS = NEGATIVE_KEYWORDS.map((kw) => {
+  const parts = kw.trim().split(/\s+/).map((w) => w.replace(REGEX_SPECIALS, "\\$&"));
+  return new RegExp(`\\b${parts.join("\\s+")}\\b`, "i");
+});
+function matchesNegativeKeyword(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return NEGATIVE_PATTERNS.some((re) => re.test(text));
+}
+async function addToDNC(
+  supabase: any,
+  phone: string,
+  reason: string,
+  sourceWorkflow: string | null,
+  businessId: string | null,
+): Promise<void> {
+  if (!phone) return;
+  const { error } = await supabase.from("dnc_list").insert({
+    phone, reason, source_workflow: sourceWorkflow, business_id: businessId,
+  });
+  if (error && !/duplicate|unique/i.test(error.message)) {
+    console.error(`[dnc] insert error for ${phone}:`, error.message);
+  }
+}
+
 // Always return TwiML so Twilio doesn't retry on non-200 or missing body
 const twiml = () =>
   new Response("<Response></Response>", {
@@ -38,7 +84,7 @@ serve(async (req) => {
     // 1. Look up business by the Twilio number that received the SMS
     const { data: settings, error: settingsErr } = await supabase
       .from("settings")
-      .select("business_id, my_phone")
+      .select("business_id, my_phone, twilio_phone_number")
       .eq("twilio_phone_number", to)
       .single();
 
@@ -55,14 +101,14 @@ serve(async (req) => {
 
     const { data: byNullBiz } = await supabase
       .from("contacts")
-      .select("id, full_name")
+      .select("id, full_name, pipeline, outreach_angle, stage")
       .eq("phone", from)
       .is("business_id", null)
       .maybeSingle();
 
     const { data: byBiz } = !byNullBiz ? await supabase
       .from("contacts")
-      .select("id, full_name")
+      .select("id, full_name, pipeline, outreach_angle, stage")
       .eq("phone", from)
       .eq("business_id", businessId)
       .maybeSingle() : { data: null };
@@ -127,9 +173,82 @@ serve(async (req) => {
       console.error("[inbound-sms] activity_log insert failed:", logErr);
     }
 
-    // 5. Notify contractor via SMS (direct Twilio — not queued, so it never appears in the inbox)
+    // 4b. Outreach reply handling (only when contact is in the outreach pipeline).
+    //     Negative keyword → DNC + force Not Interested. Non-negative → stage='Replied'
+    //     (idempotent: don't overwrite manual moves). Stop active outreach sequences in both cases.
+    const isOutreach = existing?.pipeline === OUTREACH_PIPELINE;
+    let outreachHandled = false;
+
+    if (isOutreach) {
+      outreachHandled = true;
+      const isNegative = matchesNegativeKeyword(body);
+      const angle = existing?.outreach_angle ?? null;
+      const angleLabel = (angle && OUTREACH_ANGLE_LABEL[angle]) || "Outreach";
+
+      if (isNegative) {
+        await addToDNC(supabase, from, "negative_keyword", angle, businessId);
+        await supabase
+          .from("contacts")
+          .update({ stage: "Not Interested", stage_entered_at: now })
+          .eq("id", contactId);
+      } else if (!PROTECTED_REPLIED_STAGES.has(existing?.stage ?? "")) {
+        await supabase
+          .from("contacts")
+          .update({ stage: "Replied", stage_entered_at: now })
+          .eq("id", contactId);
+      }
+
+      // Stop any active outreach contact_sequences so queued followups no-op.
+      try {
+        const { data: activeSeqs } = await supabase
+          .from("contact_sequences")
+          .select("id, sequence:sequences(pipeline)")
+          .eq("contact_id", contactId)
+          .eq("status", "active");
+        const outreachSeqIds = (activeSeqs ?? [])
+          .filter((s: any) => s.sequence?.pipeline === OUTREACH_PIPELINE)
+          .map((s: any) => s.id);
+        if (outreachSeqIds.length > 0) {
+          await supabase
+            .from("contact_sequences")
+            .update({ status: "stopped" })
+            .in("id", outreachSeqIds);
+        }
+      } catch (stopErr) {
+        console.error("[inbound-sms] failed to stop outreach sequences:", stopErr);
+      }
+
+      // Send outreach-specific notification to my_phone.
+      try {
+        if (settings.my_phone) {
+          const twilioSid  = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+          const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+          const twilioFrom = settings.twilio_phone_number ?? Deno.env.get("TWILIO_PHONE_NUMBER")!;
+          const preview    = body.slice(0, 200) + (body.length > 200 ? "…" : "");
+          const tag        = isNegative ? "DNC" : "REPLY";
+          const message    = `[${tag}] New reply from ${angleLabel} | ${from} | ${preview}`;
+
+          await fetch(
+            `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
+              },
+              body: new URLSearchParams({ To: settings.my_phone, From: twilioFrom, Body: message }),
+            },
+          );
+        }
+      } catch (notifyErr) {
+        console.error("[inbound-sms] outreach notification failed:", notifyErr);
+      }
+    }
+
+    // 5. Notify contractor via SMS (direct Twilio — not queued, so it never appears in the inbox).
+    //    Skipped for outreach replies; they got their own notification above.
     try {
-      if (settings.my_phone) {
+      if (!outreachHandled && settings.my_phone) {
         const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
         const twilioAuth  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
         const twilioFrom  = Deno.env.get("TWILIO_PHONE_NUMBER")!;

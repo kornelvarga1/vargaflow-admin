@@ -37,6 +37,7 @@ const App = () => (
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/contacts" element={<ContactsPage />} />
                     <Route path="/pipeline" element={<PipelinePage />} />
+                    <Route path="/pipeline/:tab" element={<PipelinePage />} />
                     <Route path="/sequences" element={<SequencesPage />} />
                     <Route path="/messages" element={<MessageQueuePage />} />
                     <Route path="/contacts/:id" element={<ContactProfilePage />} />

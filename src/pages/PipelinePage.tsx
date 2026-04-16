@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useParams } from "react-router-dom";
 import { useContacts, SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
 import KanbanBoard from "@/components/pipeline/KanbanBoard";
 import OutreachBoard from "@/components/outreach/OutreachBoard";
@@ -8,8 +9,12 @@ import { Upload } from "lucide-react";
 
 type Tab = "outreach" | "sales" | "onboarding";
 
+const VALID_TABS: Tab[] = ["outreach", "sales", "onboarding"];
+
 export default function PipelinePage() {
-  const [tab, setTab] = useState<Tab>("outreach");
+  const { tab: urlTab } = useParams<{ tab?: string }>();
+  const initialTab = VALID_TABS.includes(urlTab as Tab) ? (urlTab as Tab) : "outreach";
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [importOpen, setImportOpen] = useState(false);
 
   const { data: outreachContacts = [], isLoading: outreachLoading } = useContacts("Outreach");

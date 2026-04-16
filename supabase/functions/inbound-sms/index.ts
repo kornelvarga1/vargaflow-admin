@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const APP_URL = "https://app.vargaflow.com"; // update to actual CRM URL
+const APP_URL = Deno.env.get("APP_URL") ?? "https://app.vargaflow.com";
 
 const OUTREACH_PIPELINE = "Outreach";
 

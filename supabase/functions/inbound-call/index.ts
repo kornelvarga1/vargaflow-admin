@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const FUNCTION_URL = "https://zfmchywjmgykmlhjihls.supabase.co/functions/v1/inbound-call";
+const FUNCTION_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/inbound-call`;
 const FORWARD_TIMEOUT_SECONDS = 20;
 
 const twiml = (xml: string) =>

@@ -44,42 +44,17 @@ serve(async (req) => {
       return emptyTwiml();
     }
 
-    const twilioSid  = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-    const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
     const twilioFrom = Deno.env.get("TWILIO_PHONE_NUMBER")!;
 
     // --- FALLBACK: dial completed without contractor answering ---
+    // Textback is handled by missed-call-text-back via Twilio's status callback.
+    // This function only needs to return empty TwiML so Twilio ends the call.
     if (dialCallStatus !== null && dialCallStatus !== undefined) {
       if (dialCallStatus === "completed") {
-        // Contractor picked up — no text needed
-        console.log("[inbound-call] call answered, no text back needed");
-        return emptyTwiml();
+        console.log("[inbound-call] call answered, no action needed");
+      } else {
+        console.log("[inbound-call] missed call (status:", dialCallStatus, ") — textback handled by missed-call-text-back");
       }
-
-      // no-answer / busy / failed / canceled → send missed call text back
-      console.log("[inbound-call] missed call, sending text back to:", from);
-
-      const name        = settings.my_name ?? "us";
-      const company     = settings.company_name ? ` from ${settings.company_name}` : "";
-      const missedText  = `Hey, this is ${name}${company}. Sorry I missed your call! I'll get back to you shortly — feel free to reply here if you have any questions.`;
-
-      try {
-        await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
-            },
-            body: new URLSearchParams({ To: from, From: twilioFrom, Body: missedText }),
-          }
-        );
-        console.log("[inbound-call] missed call text sent");
-      } catch (err) {
-        console.error("[inbound-call] failed to send missed call text:", err);
-      }
-
       return emptyTwiml();
     }
 

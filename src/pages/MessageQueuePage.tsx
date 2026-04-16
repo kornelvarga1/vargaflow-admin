@@ -591,36 +591,34 @@ function ComposeBar({
     setText("");
 
     try {
+      const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
+
       const { data: contactData } = await supabase
         .from("contacts")
         .select("business_id")
         .eq("id", contactId)
         .single();
 
-      const { error } = await supabase.from("message_queue").insert({
-        contact_id: contactId,
-        message_content: content,
-        message_type: "sms",
-        scheduled_at: scheduledAt,
-        status: "pending",
-        to_phone: contactPhone,
-        business_id: contactData?.business_id ?? null,
-        metadata: { to: contactPhone },
+      const businessId = contactData?.business_id ?? ADMIN_BUSINESS_ID;
+
+      const { data, error } = await supabase.functions.invoke("send-manual-sms", {
+        body: {
+          contact_id: contactId,
+          business_id: businessId,
+          message: content,
+          to_phone: contactPhone,
+        },
       });
 
-      if (error) {
+      if (error || data?.error) {
         onOptimisticRollback(scheduledAt);
         setText(content);
-        throw error;
+        throw new Error(data?.error ?? error?.message ?? "Send failed");
       }
 
-      await logActivity("message_queued", `Manual SMS queued: "${content.slice(0, 60)}"`, contactId);
-      toast.success("Message queued", {
-        description: contactPhone ? `To ${contactPhone}` : "No phone number on file",
-      });
       onSent();
     } catch {
-      toast.error("Failed to queue message");
+      toast.error("Failed to send message");
     } finally {
       setSending(false);
     }

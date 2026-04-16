@@ -44,8 +44,6 @@ serve(async (req) => {
       return emptyTwiml();
     }
 
-    const twilioFrom = Deno.env.get("TWILIO_PHONE_NUMBER")!;
-
     // --- FALLBACK: dial completed without contractor answering ---
     // Textback is handled by missed-call-text-back via Twilio's status callback.
     // This function only needs to return empty TwiML so Twilio ends the call.
@@ -59,11 +57,13 @@ serve(async (req) => {
     }
 
     // --- INITIAL CALL: forward to contractor's phone ---
+    // Use `to` (the business's Twilio number) as callerId so all comms
+    // come from the same number and land in one SMS thread.
     console.log("[inbound-call] forwarding to:", settings.my_phone);
 
     return twiml(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial timeout="${FORWARD_TIMEOUT_SECONDS}" action="${FUNCTION_URL}" callerId="${twilioFrom}">
+  <Dial timeout="${FORWARD_TIMEOUT_SECONDS}" action="${FUNCTION_URL}" callerId="${to}">
     <Number>${settings.my_phone}</Number>
   </Dial>
 </Response>`);

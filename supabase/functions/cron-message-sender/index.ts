@@ -236,6 +236,21 @@ serve(async (_req) => {
         if (idx !== -1) processingIds.splice(idx, 1);
       };
 
+      // ── Global dnd_sms check (all SMS, not just outreach) ──
+      if ((msg.message_type === "sms" || msg.message_type === "internal_sms") && msg.contact_id) {
+        const { data: contactRow } = await supabase
+          .from("contacts")
+          .select("dnd_sms")
+          .eq("id", msg.contact_id)
+          .maybeSingle();
+        if (contactRow?.dnd_sms) {
+          console.log(`[cron] skipping message ${msg.id} — contact ${msg.contact_id} has dnd_sms=true`);
+          await releaseProcessing("skipped_dnd");
+          dropProcessingId();
+          continue;
+        }
+      }
+
       // Outreach-only guardrails (SMS). CRM flows bypass these entirely.
       if (isOutreach && (msg.message_type === "sms" || msg.message_type === "internal_sms")) {
         // 1. Send window — leave pending so it retries on a later tick inside the window.

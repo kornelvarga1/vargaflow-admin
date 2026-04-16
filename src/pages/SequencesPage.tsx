@@ -52,7 +52,7 @@ function useContactSequences(statusFilter: string) {
       if (error) throw error;
 
       const sequenceIds = [...new Set((data || []).map((d: any) => d.sequence_id))];
-      let stepCounts: Record<string, number> = {};
+      const stepCounts: Record<string, number> = {};
 
       if (sequenceIds.length > 0) {
         const { data: steps } = await supabase

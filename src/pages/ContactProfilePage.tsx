@@ -110,7 +110,7 @@ function useContactActiveSequences(contactId: string) {
 
       // Get step counts
       const seqIds = [...new Set((data || []).map((d: any) => d.sequence_id))];
-      let stepCounts: Record<string, number> = {};
+      const stepCounts: Record<string, number> = {};
       if (seqIds.length > 0) {
         const { data: steps } = await supabase
           .from("sequence_steps")

@@ -98,17 +98,18 @@ serve(async (req) => {
     // 2. Find or create contact by phone
     //    CRM contacts have business_id = null, so try that first before falling back to business_id match
     let contactId: string;
+    let contactBusinessId: string | null = null;
 
     const { data: byNullBiz } = await supabase
       .from("contacts")
-      .select("id, full_name, pipeline, outreach_angle, stage")
+      .select("id, full_name, pipeline, outreach_angle, stage, business_id")
       .eq("phone", from)
       .is("business_id", null)
       .maybeSingle();
 
     const { data: byBiz } = !byNullBiz ? await supabase
       .from("contacts")
-      .select("id, full_name, pipeline, outreach_angle, stage")
+      .select("id, full_name, pipeline, outreach_angle, stage, business_id")
       .eq("phone", from)
       .eq("business_id", businessId)
       .maybeSingle() : { data: null };
@@ -117,7 +118,8 @@ serve(async (req) => {
 
     if (existing) {
       contactId = existing.id;
-      console.log("[inbound-sms] existing contact:", contactId);
+      contactBusinessId = existing.business_id ?? null;
+      console.log("[inbound-sms] existing contact:", contactId, "business_id:", contactBusinessId);
     } else {
       const { data: created, error: createErr } = await supabase
         .from("contacts")
@@ -143,9 +145,10 @@ serve(async (req) => {
     const now = new Date().toISOString();
 
     // 3. Insert inbound message into message_queue
+    //    Use the contact's business_id so it appears in the correct app's inbox.
     const { error: mqErr } = await supabase.from("message_queue").insert({
       contact_id:      contactId,
-      business_id:     businessId,
+      business_id:     contactBusinessId,
       direction:       "inbound",
       status:          "received",
       message_type:    "sms",
@@ -251,10 +254,11 @@ serve(async (req) => {
       if (!outreachHandled && settings.my_phone) {
         const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
         const twilioAuth  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-        const twilioFrom  = Deno.env.get("TWILIO_PHONE_NUMBER")!;
+        const twilioFrom  = settings.twilio_phone_number ?? Deno.env.get("TWILIO_PHONE_NUMBER")!;
         const contactName = existing?.full_name ?? from;
         const preview     = body.slice(0, 100) + (body.length > 100 ? "…" : "");
-        const message     = `Reply from ${contactName}: "${preview}"\n${APP_URL}/messages`;
+        const appLink     = contactBusinessId ? APP_URL : (Deno.env.get("ADMIN_APP_URL") ?? APP_URL);
+        const message     = `Reply from ${contactName}: "${preview}"\n${appLink}/messages`;
 
         await fetch(
           `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,

@@ -89,8 +89,22 @@ async function sendEmail(
   to: string,
   subject: string,
   content: string,
-  fromEmail: string
+  fromEmail: string,
+  contactId: string | null,
 ): Promise<void> {
+  const unsubUrl = contactId
+    ? `${Deno.env.get("SUPABASE_URL")}/functions/v1/unsubscribe?c=${contactId}`
+    : null;
+  const footer = unsubUrl
+    ? `<hr style="margin-top:2rem;border:none;border-top:1px solid #eee" /><p style="color:#888;font-size:0.85em;line-height:1.4">Don't want these emails? <a href="${unsubUrl}" style="color:#888">Unsubscribe</a>.</p>`
+    : "";
+  const headers: Record<string, string> = unsubUrl
+    ? {
+        "List-Unsubscribe": `<${unsubUrl}>, <mailto:unsub@vargaflow.com>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      }
+    : {};
+
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -101,7 +115,8 @@ async function sendEmail(
       from: fromEmail,
       to,
       subject,
-      html: content,
+      html: content + footer,
+      headers,
     }),
   });
   const data = await res.json();
@@ -251,6 +266,21 @@ serve(async (_req) => {
         }
       }
 
+      // ── Global dnd_email check (mirrors dnd_sms) ──
+      if (msg.message_type === "email" && msg.contact_id) {
+        const { data: contactRow } = await supabase
+          .from("contacts")
+          .select("dnd_email")
+          .eq("id", msg.contact_id)
+          .maybeSingle();
+        if (contactRow?.dnd_email) {
+          console.log(`[cron] skipping email ${msg.id} — contact ${msg.contact_id} has dnd_email=true`);
+          await releaseProcessing("skipped_dnd");
+          dropProcessingId();
+          continue;
+        }
+      }
+
       // Outreach-only guardrails (SMS). CRM flows bypass these entirely.
       if (isOutreach && (msg.message_type === "sms" || msg.message_type === "internal_sms")) {
         // 1. Send window — leave pending so it retries on a later tick inside the window.
@@ -330,7 +360,7 @@ serve(async (_req) => {
           const fromEmail = msg.metadata?.from_email ?? "VargaFlow <hello@vargaflow.com>";
           if (!to) throw new Error(`No email address for message ${msg.id}`);
 
-          await sendEmail(to, subject, msg.message_content, fromEmail);
+          await sendEmail(to, subject, msg.message_content, fromEmail, msg.contact_id);
 
           await supabase
             .from("message_queue")

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { requestNotificationPermission, getNotificationPermissionState } from "@/hooks/usePushNotifications";
+import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 
 // ---- My Settings Tab ----
 
@@ -34,8 +35,6 @@ const SETTINGS_FIELDS: { key: string; label: string }[] = [
   { key: "launch_call_calendar_link", label: "Launch Call Calendar Link" },
   { key: "onboarding_form_link", label: "Onboarding Form Link" },
 ];
-
-const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
 
 function useMySettings() {
   return useQuery({

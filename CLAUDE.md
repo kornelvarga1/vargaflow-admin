@@ -91,8 +91,7 @@ Edge functions are written in TypeScript/Deno and deployed via Supabase CLI.
 - `flow-long-term-nurture` — 12-week nurture sequence
 - `flow-no-show` — no showed zoom followup
 - `flow-cancelled` — cancelled/rescheduled followup
-- `flow-client-closed` — moves contact to onboarding pipeline
-- `flow-ob-client-signup` — sends onboarding email + SMS immediately
+- `flow-ob-client-signup` — fired when contact is dragged/moved to "Client Closed" (auto-jumps to Onboarding) or directly to "New Client Waiting for Onboarding Form" — sends onboarding email + SMS immediately
 - `flow-ob-form-reminder` — 48hr loop until form submitted
 - `flow-ob-form-submitted` — removes tag, moves stage, sends GMB SMS
 - `flow-ob-project-ready` — 7-day project timeline SMS sequence
@@ -101,6 +100,7 @@ Edge functions are written in TypeScript/Deno and deployed via Supabase CLI.
 
 ## Important Notes
 - Special-case functions (flow-call-booked, flow-ob-launch-call, flow-ob-client-signup, flow-ob-form-reminder) do NOT use queueSteps — they have time-relative scheduling or immediate sends
+- "Client Closed" is a visual column in the Sales kanban only — dropping there auto-jumps the contact to Onboarding / "New Client Waiting for Onboarding Form" and fires flow-ob-client-signup. There is no separate flow-client-closed function.
 - All other functions use getSettings + getSequenceSteps + queueSteps from _shared/utils.ts
 - Sequence names in DB use em dashes (—) e.g. "Flow #1 — Lead Form Submitted"
 - message_queue columns: id, contact_id, contact_sequence_id, message_type, message_content, scheduled_at, status, sent_at, created_at, metadata

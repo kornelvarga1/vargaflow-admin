@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { normalizePhone, validateTwilioSignature } from "../_shared/utils.ts";
 
 const APP_URL = Deno.env.get("APP_URL") ?? "https://app.vargaflow.com";
 
@@ -64,8 +65,22 @@ serve(async (req) => {
     const text = await req.text();
     const params = new URLSearchParams(text);
 
-    const from       = params.get("From") ?? "";
-    const to         = params.get("To") ?? "";
+    // Validate Twilio's signature before touching anything — endpoint is
+    // public (verify_jwt=false) so the signature is our only auth.
+    const paramObj: Record<string, string> = {};
+    params.forEach((v, k) => { paramObj[k] = v; });
+    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+    const signature = req.headers.get("X-Twilio-Signature");
+    const valid = await validateTwilioSignature(authToken, signature, req.url, paramObj);
+    if (!valid) {
+      console.warn("[inbound-sms] invalid Twilio signature — rejecting");
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    // Twilio sends phones in E.164, but normalize anyway so we match the
+    // (business_id, phone) unique index consistently regardless of source.
+    const from       = normalizePhone(params.get("From")) ?? "";
+    const to         = normalizePhone(params.get("To")) ?? "";
     const body       = params.get("Body") ?? "";
     const messageSid = params.get("MessageSid") ?? "";
 
@@ -100,11 +115,15 @@ serve(async (req) => {
     let contactId: string;
     let contactBusinessId: string | null = null;
 
+    // Pick the most recently created match deterministically — unique-phone
+    // constraint is still TODO, so duplicates exist in the wild.
     const { data: byNullBiz } = await supabase
       .from("contacts")
       .select("id, full_name, pipeline, outreach_angle, stage, business_id")
       .eq("phone", from)
       .is("business_id", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     const { data: byBiz } = !byNullBiz ? await supabase
@@ -112,6 +131,8 @@ serve(async (req) => {
       .select("id, full_name, pipeline, outreach_angle, stage, business_id")
       .eq("phone", from)
       .eq("business_id", businessId)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle() : { data: null };
 
     const existing = byNullBiz ?? byBiz;
@@ -124,11 +145,11 @@ serve(async (req) => {
       const { data: created, error: createErr } = await supabase
         .from("contacts")
         .insert({
-          phone: from,
+          phone: from,  // already normalized at the top of the handler
           business_id: null,
           full_name: from,      // placeholder — can be updated later
           pipeline: "Sales",
-          stage: "Lead",
+          stage: "Lead In",
         })
         .select("id")
         .single();
@@ -182,9 +203,26 @@ serve(async (req) => {
     const isOutreach = existing?.pipeline === OUTREACH_PIPELINE;
     let outreachHandled = false;
 
+    // Global negative-keyword handling: set dnd_sms=true so ALL future SMS
+    // (sales, onboarding, outreach) are blocked by cron-message-sender.
+    // Also cancel this contact's pending SMS so nothing already queued fires.
+    const isNegativeGlobal = matchesNegativeKeyword(body);
+    if (isNegativeGlobal && contactId) {
+      await supabase
+        .from("contacts")
+        .update({ dnd_sms: true })
+        .eq("id", contactId);
+      await supabase
+        .from("message_queue")
+        .update({ status: "cancelled" })
+        .eq("contact_id", contactId)
+        .eq("status", "pending")
+        .in("message_type", ["sms", "internal_sms"]);
+    }
+
     if (isOutreach) {
       outreachHandled = true;
-      const isNegative = matchesNegativeKeyword(body);
+      const isNegative = isNegativeGlobal;
       const angle = existing?.outreach_angle ?? null;
       const angleLabel = (angle && OUTREACH_ANGLE_LABEL[angle]) || "Outreach";
 

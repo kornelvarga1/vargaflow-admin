@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Upload } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { normalizePhone } from "@/lib/phone";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -141,7 +142,13 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
     const result: ImportResult = { created: [], skipped: [] };
 
     try {
-      const phones = preview.map((r) => r.phone);
+      // Normalize CSV phones up front so they match stored E.164 values when
+      // checking against existing contacts / DNC list.
+      const normalizedPreview = preview.map((r) => ({
+        ...r,
+        phone: normalizePhone(r.phone) ?? r.phone,
+      }));
+      const phones = normalizedPreview.map((r) => r.phone);
       const [{ data: existing }, { data: dnc }] = await Promise.all([
         supabase.from("contacts").select("id, phone").in("phone", phones),
         supabase.from("dnc_list").select("phone").in("phone", phones),
@@ -158,7 +165,11 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
         lead_source: string;
       }[] = [];
 
-      for (const row of preview) {
+      for (const row of normalizedPreview) {
+        if (!normalizePhone(row.phone)) {
+          result.skipped.push({ row, reason: "invalid phone format" });
+          continue;
+        }
         if (dncPhones.has(row.phone)) {
           result.skipped.push({ row, reason: "on DNC list" });
           continue;

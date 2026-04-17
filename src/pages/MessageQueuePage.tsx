@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { invokeFunction } from "@/lib/invokeFunction";
+import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { useCustomValues, replaceCustomValues } from "@/hooks/useCustomValues";
 import { logActivity } from "@/hooks/useActivityLog";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
@@ -591,8 +593,6 @@ function ComposeBar({
     setText("");
 
     try {
-      const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
-
       const { data: contactData } = await supabase
         .from("contacts")
         .select("business_id")
@@ -601,13 +601,11 @@ function ComposeBar({
 
       const businessId = contactData?.business_id ?? ADMIN_BUSINESS_ID;
 
-      const { data, error } = await supabase.functions.invoke("send-manual-sms", {
-        body: {
-          contact_id: contactId,
-          business_id: businessId,
-          message: content,
-          to_phone: contactPhone,
-        },
+      const { data, error } = await invokeFunction<{ error?: string }>("send-manual-sms", {
+        contact_id: contactId,
+        business_id: businessId,
+        message: content,
+        to_phone: contactPhone,
       });
 
       if (error || data?.error) {

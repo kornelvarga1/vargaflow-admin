@@ -105,17 +105,6 @@ entrypoint = "./functions/flow-cancelled/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/flow-cancelled/*.html" ]
 
-[functions.flow-client-closed]
-enabled = true
-verify_jwt = true
-import_map = "./functions/flow-client-closed/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/flow-client-closed/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/flow-client-closed/*.html" ]
-
 [functions.flow-ob-client-signup]
 enabled = true
 verify_jwt = true
@@ -178,7 +167,7 @@ entrypoint = "./functions/send-push-notification/index.ts"
 
 [functions.send-manual-sms]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 entrypoint = "./functions/send-manual-sms/index.ts"
 
 [functions.enroll-outreach]
@@ -186,3 +175,8 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/enroll-outreach/deno.json"
 entrypoint = "./functions/enroll-outreach/index.ts"
+
+[functions.unsubscribe]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/unsubscribe/index.ts"

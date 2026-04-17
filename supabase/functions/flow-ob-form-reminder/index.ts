@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings } from "../_shared/utils.ts";
+import { getSettings, sendEmailWithUnsubscribe } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -60,25 +60,20 @@ serve(async (req) => {
     const email = contact.email;
 
     // Send reminder email
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${companyName} <hello@vargaflow.com>`,
-        to: email,
-        subject: `Onboarding Reminder for ${contact.full_name}`,
-        html: `
-          <p>Hey ${firstName}, we're happy to have you on board!</p>
-          <p>Before we can begin we'll need just 15 minutes of your time.</p>
-          <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
-          <p><strong>Step 2:</strong> Send us at least 25 photos — email to ${myEmail}</p>
-          <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
-          <p>Please take care of this right now. Thanks! — ${myName}, ${companyName}</p>
-        `,
-      }),
+    const emailRes = await sendEmailWithUnsubscribe({
+      resendKey,
+      from: `${companyName} <hello@vargaflow.com>`,
+      to: email,
+      subject: `Onboarding Reminder for ${contact.full_name}`,
+      contactId: contact.id,
+      html: `
+        <p>Hey ${firstName}, we're happy to have you on board!</p>
+        <p>Before we can begin we'll need just 15 minutes of your time.</p>
+        <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
+        <p><strong>Step 2:</strong> Send us at least 25 photos — email to ${myEmail}</p>
+        <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
+        <p>Please take care of this right now. Thanks! — ${myName}, ${companyName}</p>
+      `,
     });
     if (!emailRes.ok) {
       const emailData = await emailRes.json();

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { validateTwilioSignature } from "../_shared/utils.ts";
 
 const FUNCTION_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/inbound-call`;
 const FORWARD_TIMEOUT_SECONDS = 20;
@@ -18,6 +19,18 @@ serve(async (req) => {
   try {
     const text = await req.text();
     const params = new URLSearchParams(text);
+
+    // Validate Twilio signature — public endpoint (verify_jwt=false) so this
+    // is the only auth. Reject spoofed POSTs.
+    const paramObj: Record<string, string> = {};
+    params.forEach((v, k) => { paramObj[k] = v; });
+    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+    const signature = req.headers.get("X-Twilio-Signature");
+    const valid = await validateTwilioSignature(authToken, signature, req.url, paramObj);
+    if (!valid) {
+      console.warn("[inbound-call] invalid Twilio signature — rejecting");
+      return new Response("Forbidden", { status: 403 });
+    }
 
     const from = params.get("From") ?? "";
     const to = params.get("To") ?? "";

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings } from "../_shared/utils.ts";
+import { getSettings, getTwilioFromNumber, sendEmailWithUnsubscribe } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -36,7 +36,7 @@ serve(async (req) => {
 
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-    const twilioFrom = Deno.env.get("TWILIO_PHONE_NUMBER")!;
+    const twilioFrom = await getTwilioFromNumber(supabase, bid);
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
 
     const sendSMS = async (to: string, body: string) => {
@@ -70,25 +70,20 @@ serve(async (req) => {
     const email = contact.email;
 
     // Send onboarding email immediately
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${companyName} <hello@vargaflow.com>`,
-        to: email,
-        subject: "Let's Get You Onboarded!",
-        html: `
-          <p>Hey ${firstName},</p>
-          <p>Please go through these steps so we can get started on your website and marketing systems.</p>
-          <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
-          <p><strong>Step 2:</strong> Send us at least 25 photos of your finished projects — email them to ${myEmail}</p>
-          <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
-          <p>Thanks! — ${myName}, ${companyName}</p>
-        `,
-      }),
+    const emailRes = await sendEmailWithUnsubscribe({
+      resendKey,
+      from: `${companyName} <hello@vargaflow.com>`,
+      to: email,
+      subject: "Let's Get You Onboarded!",
+      contactId: contact.id,
+      html: `
+        <p>Hey ${firstName},</p>
+        <p>Please go through these steps so we can get started on your website and marketing systems.</p>
+        <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
+        <p><strong>Step 2:</strong> Send us at least 25 photos of your finished projects — email them to ${myEmail}</p>
+        <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
+        <p>Thanks! — ${myName}, ${companyName}</p>
+      `,
     });
     if (!emailRes.ok) {
       const emailData = await emailRes.json();

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getTwilioFromNumber, normalizePhone } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,16 +59,33 @@ serve(async (req) => {
     }
     console.log("[4] dedup passed");
 
-    // Find or create contact
+    // Find or create contact — match by email first, then by normalized phone
+    // so duplicates don't slip in when the Calendly webhook fires for a contact
+    // we already track. Normalization keeps everything E.164-consistent with
+    // the (business_id, phone) unique constraint.
+    const normalizedPhone = normalizePhone(contactPhone);
     let contact;
-    const { data: existing } = await supabase
+
+    const { data: byEmail } = contactEmail ? await supabase
       .from("contacts")
       .select("*")
       .eq("email", contactEmail)
-      .single();
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle() : { data: null };
 
-    if (existing) {
-      contact = existing;
+    const { data: byPhone } = !byEmail && normalizedPhone ? await supabase
+      .from("contacts")
+      .select("*")
+      .eq("phone", normalizedPhone)
+      .eq("business_id", businessId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle() : { data: null };
+
+    contact = byEmail ?? byPhone;
+
+    if (contact) {
       console.log("[5] existing contact found:", contact.id, "phone:", contact.phone);
     } else {
       const { data: newContact, error: insertError } = await supabase
@@ -75,7 +93,7 @@ serve(async (req) => {
         .insert({
           full_name: contactName,
           email: contactEmail,
-          phone: contactPhone,
+          phone: normalizedPhone,
           business_id: businessId,
           pipeline: "Sales",
           stage: "Zoom Call Booked",
@@ -88,7 +106,7 @@ serve(async (req) => {
     }
 
     const bid = businessId ?? contact.business_id;
-    const resolvedPhone = contactPhone || contact.phone || "";
+    const resolvedPhone = normalizedPhone || contact.phone || "";
     console.log("[6] bid:", bid, "resolvedPhone:", resolvedPhone);
 
     if (!resolvedPhone) {
@@ -107,8 +125,8 @@ serve(async (req) => {
     }
 
     // If the contact record had no phone but the webhook provided one, save it
-    if (contactPhone && !contact.phone) {
-      await supabase.from("contacts").update({ phone: contactPhone }).eq("id", contact.id);
+    if (normalizedPhone && !contact.phone) {
+      await supabase.from("contacts").update({ phone: normalizedPhone }).eq("id", contact.id);
     }
 
     // Cancel any pending messages from prior sequences before queuing new ones
@@ -145,7 +163,7 @@ serve(async (req) => {
 
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-    const twilioFrom = Deno.env.get("TWILIO_PHONE_NUMBER")!;
+    const twilioFrom = await getTwilioFromNumber(supabase, businessId);
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
     console.log("[9] twilio from:", twilioFrom, "twilioSid set:", !!twilioSid, "resendKey set:", !!resendKey);
 

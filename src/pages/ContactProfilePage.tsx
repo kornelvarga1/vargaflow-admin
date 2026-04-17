@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { invokeFunction } from "@/lib/invokeFunction";
+import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { useUpdateContact, SALES_STAGES, ONBOARDING_STAGES, type Contact } from "@/hooks/useContacts";
 import { useStopContactSequences } from "@/hooks/useSequences";
 import { logActivity } from "@/hooks/useActivityLog";
@@ -500,7 +502,6 @@ const STAGE_FLOW_MAP: Record<string, string> = {
   "No Contact → Long Term Nurture": "flow-long-term-nurture",
   "No Showed to Zoom": "flow-no-show",
   "Cancelled/Rescheduled": "flow-cancelled",
-  "Client Closed": "flow-client-closed",
   "New Client Waiting for Onboarding Form": "flow-ob-client-signup",
   "Project Ready to Start": "flow-ob-project-ready",
 };
@@ -525,21 +526,28 @@ function MoveStageDialog({
       return;
     }
     try {
+      const isClientClosed = contact.pipeline === "Sales" && selectedStage === "Client Closed";
+      const effectiveStage = isClientClosed ? "New Client Waiting for Onboarding Form" : selectedStage;
+
       await updateContact.mutateAsync({
         id: contact.id,
-        stage: selectedStage,
+        stage: effectiveStage,
         stage_entered_at: new Date().toISOString(),
+        ...(isClientClosed ? { pipeline: "Onboarding" } : {}),
       });
-      const label = stages.find((s) => s.key === selectedStage)?.label || selectedStage;
+      const label = isClientClosed
+        ? "Onboarding → Waiting for Onboarding Form"
+        : (stages.find((s) => s.key === selectedStage)?.label || selectedStage);
       await logActivity("stage_changed", `moved to ${label}`, contact.id);
-      toast.success(`Moved to ${label}`);
+      toast.success(isClientClosed ? `${contact.full_name} → Onboarding` : `Moved to ${label}`);
 
       // Trigger edge function if one exists for this stage
-      const flowName = STAGE_FLOW_MAP[selectedStage];
+      const flowName = STAGE_FLOW_MAP[effectiveStage];
       if (flowName) {
         try {
-          await supabase.functions.invoke(flowName, {
-            body: { contact_id: contact.id, business_id: contact.business_id },
+          await invokeFunction(flowName, {
+            contact_id: contact.id,
+            business_id: contact.business_id ?? ADMIN_BUSINESS_ID,
           });
           toast.info(`Automation triggered: ${flowName}`);
         } catch (err) {

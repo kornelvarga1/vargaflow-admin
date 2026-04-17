@@ -5,6 +5,8 @@ import { useUpdateContact, type Contact } from "@/hooks/useContacts";
 import { useStopContactSequences } from "@/hooks/useSequences";
 import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
+import { invokeFunction } from "@/lib/invokeFunction";
+import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,7 +70,6 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
     "No Contact → Long Term Nurture": "flow-long-term-nurture",
     "No Showed to Zoom": "flow-no-show",
     "Cancelled/Rescheduled": "flow-cancelled",
-    "Client Closed": "flow-client-closed",
     "New Client Waiting for Onboarding Form": "flow-ob-client-signup",
     "Project Ready to Start": "flow-ob-project-ready",
   };
@@ -80,8 +81,9 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
     if (!flowName) return;
 
     try {
-      const { error } = await supabase.functions.invoke(flowName, {
-        body: { contact_id: contactId, business_id: contact.business_id },
+      const { error } = await invokeFunction(flowName, {
+        contact_id: contactId,
+        business_id: contact.business_id ?? ADMIN_BUSINESS_ID,
       });
       if (error) throw error;
       toast.info(`Automation triggered: ${flowName}`, { description: "Check Message Queue for pending messages." });
@@ -111,7 +113,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
           description: "Automatically moved to onboarding pipeline.",
         });
         await logActivity("stage_changed", `moved to Onboarding → Waiting for Onboarding Form`, contactId);
-        await triggerSequences(contactId, contact);
+        await triggerSequences(contactId, { ...contact, pipeline: "Onboarding", stage: "New Client Waiting for Onboarding Form" });
       } else {
         await updateContact.mutateAsync({
           id: contactId,

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings } from "../_shared/utils.ts";
+import { getSettings, sendEmailWithUnsubscribe } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -109,24 +109,19 @@ serve(async (req) => {
     });
 
     // Immediately: confirmation email
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: `${companyName} <hello@vargaflow.com>`,
-        to: email,
-        subject: `Launch Call Booked for ${apptTime}`,
-        html: `
-          <p>Congrats ${firstName}!</p>
-          <p>Your launch call has been scheduled for ${apptTime}.</p>
-          <p>It will be a 30-45 minute Zoom call. You'll get the Zoom link in your inbox 10 minutes before your appointment.</p>
-          <p>If you want to watch a walkthrough video: <a href="${videoLink}">click here</a></p>
-          <p>We look forward to getting your launch done! — ${myName}, ${companyName}</p>
-        `,
-      }),
+    const emailRes = await sendEmailWithUnsubscribe({
+      resendKey,
+      from: `${companyName} <hello@vargaflow.com>`,
+      to: email,
+      subject: `Launch Call Booked for ${apptTime}`,
+      contactId: contact.id,
+      html: `
+        <p>Congrats ${firstName}!</p>
+        <p>Your launch call has been scheduled for ${apptTime}.</p>
+        <p>It will be a 30-45 minute Zoom call. You'll get the Zoom link in your inbox 10 minutes before your appointment.</p>
+        <p>If you want to watch a walkthrough video: <a href="${videoLink}">click here</a></p>
+        <p>We look forward to getting your launch done! — ${myName}, ${companyName}</p>
+      `,
     });
     if (!emailRes.ok) {
       const emailData = await emailRes.json();

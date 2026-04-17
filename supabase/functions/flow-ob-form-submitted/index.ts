@@ -1,19 +1,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings } from "../_shared/utils.ts";
+import { getSettings, normalizePhone } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/**
- * Onboarding form submission handler.
- *
- * Accepts the full form payload. No contact_id required — the form is a plain
- * public URL. Critical path: store the submission. Everything else (notifications,
- * tag/stage updates, automation logs) is best-effort and won't fail the request.
- */
+// Onboarding form submission handler. No contact_id required — auto-matches by
+// email then phone. Critical path: store the submission. Everything else
+// (notifications, tag/stage updates, automation logs) is best-effort.
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -25,7 +21,9 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Try to auto-match to an existing contact by email, then phone.
+    // Auto-match to an existing contact by email (most recent), then phone.
+    // Using .order + .limit + .maybeSingle to be deterministic when duplicates
+    // exist — picks the most recently created contact with that email/phone.
     let contact: any = null;
     try {
       if (formData.email) {
@@ -33,24 +31,29 @@ serve(async (req) => {
           .from("contacts")
           .select("*")
           .eq("email", formData.email)
+          .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (data) contact = data;
       }
       if (!contact && formData.business_phone) {
-        const { data } = await supabase
-          .from("contacts")
-          .select("*")
-          .eq("phone", formData.business_phone)
-          .limit(1)
-          .maybeSingle();
-        if (data) contact = data;
+        const normalized = normalizePhone(formData.business_phone);
+        if (normalized) {
+          const { data } = await supabase
+            .from("contacts")
+            .select("*")
+            .eq("phone", normalized)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (data) contact = data;
+        }
       }
     } catch (matchErr) {
       console.error("Contact auto-match failed:", matchErr);
     }
 
-    const bid = contact?.business_id ?? null;
+    const bid = contact?.business_id ?? Deno.env.get("VARGA_FLOW_ADMIN_BID") ?? null;
 
     // CRITICAL: store the submission. This must succeed.
     const { error: insertErr } = await supabase.from("onboarding_submissions").insert({
@@ -64,9 +67,7 @@ serve(async (req) => {
     // break the submission.
     if (contact) {
       try {
-        // Skip getSettings entirely if we don't have a business_id — avoids a
-        // guaranteed "invalid uuid" error on the eq() call.
-        const settings = bid ? await getSettings(supabase, bid).catch(() => null as any) : null;
+        const settings = await getSettings(supabase, bid).catch(() => null as any);
         const myName = settings?.my_name || "Kornel";
         const myPhone = settings?.my_phone || "";
         const gmbReviewLink = settings?.gmb_review_link || "[GMB tutorial link]";
@@ -78,15 +79,15 @@ serve(async (req) => {
         const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
         const updatedTags = currentTags.filter((t: string) => t !== "Needs to Fill Out Onboarding Form");
 
-        await supabase
+        const { error: updErr } = await supabase
           .from("contacts")
           .update({ tags: updatedTags, stage: "Form Submitted" })
-          .eq("id", contact.id)
-          .then(({ error }) => { if (error) console.error("Contact update failed:", error); });
+          .eq("id", contact.id);
+        if (updErr) console.error("Contact update failed:", updErr);
 
         // Internal notification
         if (myPhone) {
-          await supabase.from("message_queue").insert({
+          const { error: notifErr } = await supabase.from("message_queue").insert({
             contact_id: contact.id,
             business_id: bid,
             message_type: "sms",
@@ -94,12 +95,13 @@ serve(async (req) => {
             scheduled_at: new Date(Date.now() + 30 * 1000).toISOString(),
             status: "pending",
             metadata: { to: myPhone },
-          }).then(({ error }) => { if (error) console.error("Internal notif failed:", error); });
+          });
+          if (notifErr) console.error("Internal notif failed:", notifErr);
         }
 
         // SMS to client — GMB access request
         if (phone) {
-          await supabase.from("message_queue").insert({
+          const { error: gmbErr } = await supabase.from("message_queue").insert({
             contact_id: contact.id,
             business_id: bid,
             message_type: "sms",
@@ -107,21 +109,23 @@ serve(async (req) => {
             scheduled_at: new Date(Date.now() + 60 * 1000).toISOString(),
             status: "pending",
             metadata: { to: phone },
-          }).then(({ error }) => { if (error) console.error("GMB SMS failed:", error); });
+          });
+          if (gmbErr) console.error("GMB SMS failed:", gmbErr);
         }
 
-        await supabase.from("automation_logs").insert({
+        const { error: logErr } = await supabase.from("automation_logs").insert({
           contact_id: contact.id,
           business_id: bid,
           flow: "flow-ob-form-submitted",
           status: "completed",
           ran_at: new Date().toISOString(),
-        }).then(({ error }) => { if (error) console.error("Automation log failed:", error); });
+        });
+        if (logErr) console.error("Automation log failed:", logErr);
       } catch (flowErr) {
         console.error("Matched-contact flow failed (non-fatal):", flowErr);
       }
     } else {
-      // Unmatched — notify Kornel via whatever my_phone is configured anywhere in settings.
+      // Unmatched — notify whoever has my_phone set.
       try {
         const { data: anySettings } = await supabase
           .from("settings")
@@ -131,13 +135,14 @@ serve(async (req) => {
           .maybeSingle();
         const myPhone = (anySettings as any)?.my_phone || "";
         if (myPhone) {
-          await supabase.from("message_queue").insert({
+          const { error: notifErr } = await supabase.from("message_queue").insert({
             message_type: "sms",
             message_content: `New onboarding form submission (unmatched). Name: ${formData.full_name ?? "?"}. Business: ${formData.business_name ?? "?"}. Email: ${formData.email ?? "?"}. Review in admin.`,
             scheduled_at: new Date(Date.now() + 30 * 1000).toISOString(),
             status: "pending",
             metadata: { to: myPhone },
-          }).then(({ error }) => { if (error) console.error("Unmatched notif failed:", error); });
+          });
+          if (notifErr) console.error("Unmatched notif failed:", notifErr);
         }
       } catch (notifErr) {
         console.error("Unmatched notification failed (non-fatal):", notifErr);
@@ -152,7 +157,7 @@ serve(async (req) => {
   } catch (err) {
     console.error("Fatal error:", err);
     return new Response(
-      JSON.stringify({ success: false, error: err.message }),
+      JSON.stringify({ success: false, error: err instanceof Error ? err.message : String(err) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

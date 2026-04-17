@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { invokeFunction } from "@/lib/invokeFunction";
 
 export type OutreachWorkflow = "free_website" | "leads_incentive";
 
@@ -25,9 +26,7 @@ export function useEnrollOutreach() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { contact_ids: string[]; workflow: OutreachWorkflow }) => {
-      const { data, error } = await supabase.functions.invoke<EnrollResult>("enroll-outreach", {
-        body: input,
-      });
+      const { data, error } = await invokeFunction<EnrollResult>("enroll-outreach", input);
       if (error) throw error;
       if (!data) throw new Error("empty response from enroll-outreach");
       return data;

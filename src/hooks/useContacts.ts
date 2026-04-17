@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { normalizePhone } from "@/lib/phone";
 import { logActivity } from "@/hooks/useActivityLog";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
@@ -69,7 +70,8 @@ export function useCreateContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (contact: ContactInsert) => {
-      const { data, error } = await supabase.from("contacts").insert(contact).select().single();
+      const normalized = { ...contact, phone: normalizePhone(contact.phone) };
+      const { data, error } = await supabase.from("contacts").insert(normalized).select().single();
       if (error) throw error;
       return data;
     },
@@ -84,7 +86,10 @@ export function useUpdateContact() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: ContactUpdate & { id: string }) => {
-      const { error } = await supabase.from("contacts").update(updates).eq("id", id);
+      const normalized = updates.phone !== undefined
+        ? { ...updates, phone: normalizePhone(updates.phone) }
+        : updates;
+      const { error } = await supabase.from("contacts").update(normalized).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts"] }),

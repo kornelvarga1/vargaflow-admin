@@ -1,15 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authErrorResponse, requireAdmin } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-auth",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    await requireAdmin(req);
+
     const { contact_id, business_id, message, to_phone } = await req.json();
 
     if (!contact_id) throw new Error("contact_id required");
@@ -98,6 +101,8 @@ serve(async (req) => {
     });
 
   } catch (err) {
+    const authResp = authErrorResponse(err, corsHeaders);
+    if (authResp) return authResp;
     console.error("[send-manual-sms] error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),

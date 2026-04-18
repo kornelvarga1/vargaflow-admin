@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getTwilioFromNumber, normalizePhone } from "../_shared/utils.ts";
+import { getTwilioFromNumber, normalizePhone, validateWebhookToken } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +9,14 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  if (!validateWebhookToken(req, "CALENDLY_WEBHOOK_TOKEN")) {
+    console.warn("[flow-call-booked] rejected: invalid or missing ?k= token");
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   console.log("[1] flow-call-booked invoked");
 

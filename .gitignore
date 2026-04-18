@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Claude Code project state
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,5 +26,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Supabase CLI binary
+# Supabase CLI binary + cache
 bin/
+supabase/.temp/

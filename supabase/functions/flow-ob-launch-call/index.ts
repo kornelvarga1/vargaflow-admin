@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings, sendEmailWithUnsubscribe } from "../_shared/utils.ts";
+import { getSettings, sendEmailWithUnsubscribe, validateWebhookToken } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +9,14 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  if (!validateWebhookToken(req, "CALENDLY_WEBHOOK_TOKEN")) {
+    console.warn("[flow-ob-launch-call] rejected: invalid or missing ?k= token");
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   try {
     const body = await req.json();

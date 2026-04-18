@@ -1,16 +1,19 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import webpush from "npm:web-push@3.6.7";
+import { authErrorResponse, requireAdmin } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-auth",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    await requireAdmin(req);
+
     const { business_id, title, body: msgBody } = await req.json();
     if (!business_id) throw new Error("business_id required");
 
@@ -65,6 +68,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ delivered: true }), { status: 200, headers: corsHeaders });
 
   } catch (err) {
+    const authResp = authErrorResponse(err, corsHeaders);
+    if (authResp) return authResp;
     console.error("[push] error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),

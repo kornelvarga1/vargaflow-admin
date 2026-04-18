@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authErrorResponse, requireAdmin } from "../_shared/utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -13,7 +14,7 @@ const SEQUENCE_BY_ANGLE: Record<string, string> = {
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-user-auth",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -42,6 +43,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
+    await requireAdmin(req);
+
     const { contact_ids, workflow } = await req.json();
 
     if (!Array.isArray(contact_ids) || contact_ids.length === 0) {
@@ -169,6 +172,8 @@ serve(async (req) => {
 
     return json(200, { enrolled, skipped });
   } catch (err) {
+    const authResp = authErrorResponse(err, CORS);
+    if (authResp) return authResp;
     console.error("[enroll-outreach] fatal:", err);
     return json(500, { error: err instanceof Error ? err.message : String(err) });
   }

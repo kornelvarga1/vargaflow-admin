@@ -1,4 +1,104 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// Authorization guard for admin-only edge functions.
+// Accepts two kinds of bearer token:
+//   1. The service_role JWT (used by cron + server-side invokers via
+//      invokeFunctionCall) — no DB lookup, direct token comparison.
+//   2. A Supabase-issued user JWT whose profiles.role = 'admin'.
+// Anything else (anon JWT, non-admin user JWT, missing token) throws.
+// Call this as the FIRST line inside serve() for any function that can
+// spend money (Twilio, Resend) or send notifications.
+export class AuthError extends Error {
+  constructor(public code: "UNAUTHORIZED" | "FORBIDDEN", message: string) {
+    super(message);
+  }
+}
+
+function decodeJwtClaims(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    let b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const json = new TextDecoder("utf-8").decode(bytes);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+export async function requireAdmin(req: Request): Promise<void> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const authToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  // Gateway (verify_jwt=true) already validated the token signature, so we
+  // can trust the decoded claims. Service-role calls (cron + internal) get a
+  // free pass.
+  const authClaims = decodeJwtClaims(authToken);
+  if (authClaims?.role === "service_role") return;
+
+  // Admin UI sends X-User-Auth with the user session JWT because the gateway
+  // slot carries the HS256 anon JWT. Fall back to Authorization if absent
+  // (direct invocations outside the UI flow).
+  const userAuthHeader = req.headers.get("X-User-Auth") ?? "";
+  const userToken = (userAuthHeader || authHeader).replace(/^Bearer\s+/i, "").trim();
+  if (!userToken) throw new AuthError("UNAUTHORIZED", "missing token");
+
+  const userClaims = decodeJwtClaims(userToken);
+  if (!userClaims || userClaims.role === "anon") {
+    throw new AuthError("UNAUTHORIZED", "user session required");
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { data: userData, error: userErr } = await supabase.auth.getUser(userToken);
+  if (userErr || !userData?.user) throw new AuthError("UNAUTHORIZED", "invalid user token");
+
+  const { data: profile, error: profErr } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+  if (profErr || profile?.role !== "admin") {
+    throw new AuthError("FORBIDDEN", "admin role required");
+  }
+}
+
+// Lightweight webhook authenticator for providers whose dashboard UI can't
+// configure HMAC signatures (e.g. Calendly dashboard-created webhooks).
+// The webhook URL includes `?k=<secret>` and we verify it against an env var.
+// Constant-time compare so timing attacks can't leak the secret byte-by-byte.
+export function validateWebhookToken(req: Request, envVarName: string): boolean {
+  const expected = Deno.env.get(envVarName);
+  if (!expected) {
+    console.warn(`[validateWebhookToken] ${envVarName} not set — rejecting`);
+    return false;
+  }
+  const url = new URL(req.url);
+  const provided = url.searchParams.get("k") ?? "";
+  if (provided.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < provided.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+export function authErrorResponse(err: unknown, corsHeaders: Record<string, string> = {}) {
+  if (err instanceof AuthError) {
+    const status = err.code === "UNAUTHORIZED" ? 401 : 403;
+    return new Response(JSON.stringify({ error: err.message }), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  return null;
+}
 
 // Validate an incoming Twilio webhook's X-Twilio-Signature header per
 // https://www.twilio.com/docs/usage/security

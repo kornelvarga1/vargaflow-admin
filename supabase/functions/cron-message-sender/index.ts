@@ -7,6 +7,10 @@ const TWILIO_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH = Deno.env.get("TWILIO_AUTH_TOKEN")!;
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
 const OUTREACH_TZ = Deno.env.get("OUTREACH_TIMEZONE") ?? "America/New_York";
+// Healthchecks.io heartbeat URL — pinged at end of every successful run.
+// If healthchecks.io misses pings beyond grace period, it alerts. Optional;
+// leave unset to disable monitoring.
+const HEALTHCHECKS_URL = Deno.env.get("HEALTHCHECKS_URL");
 
 const MAX_RETRIES = 3;
 const OUTREACH_PIPELINE = "Outreach";
@@ -48,6 +52,41 @@ async function isDNC(supabase: any, phone: string): Promise<boolean> {
 const twilioNumberCache: Record<string, string> = {};
 const NULL_BIZ_KEY = "__null_business__";
 
+// Cache sequence step counts per cron run so we don't re-query on every send.
+const stepCountCache: Record<string, number> = {};
+
+async function getSequenceStepCount(
+  supabase: ReturnType<typeof createClient>,
+  sequenceId: string,
+): Promise<number> {
+  if (stepCountCache[sequenceId] !== undefined) return stepCountCache[sequenceId];
+  const { count } = await supabase
+    .from("sequence_steps")
+    .select("*", { count: "exact", head: true })
+    .eq("sequence_id", sequenceId);
+  stepCountCache[sequenceId] = count ?? 0;
+  return count ?? 0;
+}
+
+// Increment current_step on the contact_sequences row; mark completed when all steps sent.
+async function advanceContactSequence(
+  supabase: ReturnType<typeof createClient>,
+  contactSequenceId: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("contact_sequences")
+    .select("current_step, sequence_id, status")
+    .eq("id", contactSequenceId)
+    .maybeSingle();
+  const cs = data as { current_step: number | null; sequence_id: string; status: string } | null;
+  if (!cs || cs.status !== "active") return;
+  const newStep = (cs.current_step ?? 0) + 1;
+  const total = await getSequenceStepCount(supabase, cs.sequence_id);
+  const updates: Record<string, unknown> = { current_step: newStep };
+  if (total > 0 && newStep >= total) updates.status = "completed";
+  await supabase.from("contact_sequences").update(updates).eq("id", contactSequenceId);
+}
+
 async function getTwilioNumber(
   supabase: ReturnType<typeof createClient>,
   business_id: string | null
@@ -63,6 +102,20 @@ async function getTwilioNumber(
   const number = (data as any)?.twilio_phone_number ?? null;
   if (number) twilioNumberCache[key] = number;
   return number;
+}
+
+// Twilio error codes that indicate a permanently-bad destination number.
+// When any of these come back, we immediately mark the message permanently
+// failed AND flip contacts.dnd_sms=true so no future send wastes credits.
+// 30003 = unreachable handset, 30004 = blocked, 30005 = unknown handset, 30006 = landline/unreachable carrier.
+const INVALID_NUMBER_CODES = new Set([30003, 30004, 30005, 30006]);
+
+class TwilioSendError extends Error {
+  code: number | null;
+  constructor(message: string, code: number | null) {
+    super(message);
+    this.code = code;
+  }
 }
 
 async function sendSMS(
@@ -82,7 +135,10 @@ async function sendSMS(
     }
   );
   const data = await res.json();
-  if (!res.ok) throw new Error(`Twilio error: ${data.message}`);
+  if (!res.ok) {
+    const code = typeof data?.code === "number" ? data.code : null;
+    throw new TwilioSendError(`Twilio ${code ?? "?"}: ${data?.message ?? "unknown error"}`, code);
+  }
 }
 
 async function sendEmail(
@@ -281,6 +337,28 @@ serve(async (_req) => {
         }
       }
 
+      // Global sequence-status gate — honors pause/stop for ALL message types.
+      // Paused: leave pending so it fires after resume. Stopped/cancelled/completed: permanently skip.
+      if (msg.contact_sequence_id) {
+        const { data: cs } = await supabase
+          .from("contact_sequences")
+          .select("status")
+          .eq("id", msg.contact_sequence_id)
+          .maybeSingle();
+        if (cs) {
+          if (cs.status === "paused") {
+            await releaseProcessing("pending");
+            dropProcessingId();
+            continue;
+          }
+          if (cs.status !== "active") {
+            await releaseProcessing("skipped_stopped");
+            dropProcessingId();
+            continue;
+          }
+        }
+      }
+
       // Outreach-only guardrails (SMS). CRM flows bypass these entirely.
       if (isOutreach && (msg.message_type === "sms" || msg.message_type === "internal_sms")) {
         // 1. Send window — leave pending so it retries on a later tick inside the window.
@@ -295,21 +373,7 @@ serve(async (_req) => {
           dropProcessingId();
           continue;
         }
-        // 3. Race guard — re-fetch contact_sequences.status immediately before send.
-        //    inbound-sms may have stopped the sequence since this row was queued.
-        if (msg.contact_sequence_id) {
-          const { data: cs } = await supabase
-            .from("contact_sequences")
-            .select("status")
-            .eq("id", msg.contact_sequence_id)
-            .maybeSingle();
-          if (cs && cs.status !== "active") {
-            await releaseProcessing("skipped_stopped");
-            dropProcessingId();
-            continue;
-          }
-        }
-        // 4. DNC suppression (fail-closed).
+        // 3. DNC suppression (fail-closed).
         const toCheck = msg.to_phone ?? msg.metadata?.to;
         if (toCheck && (await isDNC(supabase, toCheck))) {
           await releaseProcessing("skipped_dnc");
@@ -414,6 +478,15 @@ serve(async (_req) => {
           throw new Error(`Unknown message_type: ${msg.message_type}`);
         }
 
+        // Advance contact_sequence progress (increment current_step, mark completed when done).
+        if (msg.contact_sequence_id) {
+          try {
+            await advanceContactSequence(supabase, msg.contact_sequence_id);
+          } catch (advErr) {
+            console.error(`advanceContactSequence failed for ${msg.contact_sequence_id}:`, advErr);
+          }
+        }
+
         // Remove from processing tracker on success
         const idx = processingIds.indexOf(msg.id);
         if (idx !== -1) processingIds.splice(idx, 1);
@@ -422,7 +495,22 @@ serve(async (_req) => {
       } catch (msgErr) {
         failed++;
         const retryCount = (msg.metadata?.retry_count ?? 0) + 1;
-        const isPermanentFailure = retryCount >= MAX_RETRIES;
+
+        // Detect Twilio "this number is permanently bad" errors — no point retrying.
+        // Flip the contact's dnd_sms so future outbound messages don't waste credits either.
+        const twilioCode = msgErr instanceof TwilioSendError ? msgErr.code : null;
+        const isInvalidNumber = twilioCode !== null && INVALID_NUMBER_CODES.has(twilioCode);
+
+        if (isInvalidNumber && msg.contact_id) {
+          try {
+            await supabase.from("contacts").update({ dnd_sms: true }).eq("id", msg.contact_id);
+            console.log(`[cron] contact ${msg.contact_id} flagged dnd_sms=true after Twilio ${twilioCode}`);
+          } catch (dndErr) {
+            console.error(`[cron] failed to flip dnd_sms for ${msg.contact_id}:`, dndErr);
+          }
+        }
+
+        const isPermanentFailure = isInvalidNumber || retryCount >= MAX_RETRIES;
 
         const retryAfter = isPermanentFailure
           ? undefined
@@ -439,6 +527,7 @@ serve(async (_req) => {
               retry_count: retryCount,
               ...(retryAfter ? { retry_after: retryAfter } : {}),
               ...(isPermanentFailure ? { permanently_failed: true } : {}),
+              ...(twilioCode !== null ? { twilio_error_code: twilioCode } : {}),
             },
           })
           .eq("id", msg.id);
@@ -520,6 +609,16 @@ serve(async (_req) => {
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
+
+    // Heartbeat ping — healthchecks.io tracks "cron actually ran" (not just "endpoint up").
+    // Fire-and-forget: a failed heartbeat must not turn a successful cron run into a 500.
+    if (HEALTHCHECKS_URL) {
+      try {
+        await fetch(HEALTHCHECKS_URL, { method: "GET" });
+      } catch (hcErr) {
+        console.error("[healthcheck] ping failed:", hcErr);
+      }
+    }
 
     return new Response(
       JSON.stringify({ sent, failed, total: messages.length }),

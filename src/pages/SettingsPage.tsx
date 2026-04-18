@@ -403,12 +403,12 @@ export default function SettingsPage() {
               <Button
                 size="sm"
                 variant={notifPermission === "granted" ? "outline" : "default"}
-                disabled={notifLoading || notifPermission === "granted"}
+                disabled={notifLoading}
                 onClick={async () => {
                   setNotifLoading(true);
                   const ok = await requestNotificationPermission(ADMIN_BUSINESS_ID);
                   setNotifPermission(ok ? "granted" : Notification.permission);
-                  if (ok) toast.success("Push notifications enabled");
+                  if (ok) toast.success(notifPermission === "granted" ? "Subscription refreshed on this device" : "Push notifications enabled");
                   else toast.error("Could not enable notifications");
                   setNotifLoading(false);
                 }}
@@ -417,7 +417,7 @@ export default function SettingsPage() {
                 {notifLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : notifPermission === "granted" ? (
-                  <><Bell className="w-4 h-4 mr-1.5" />Enabled</>
+                  <><Bell className="w-4 h-4 mr-1.5" />Refresh on this device</>
                 ) : (
                   <><Bell className="w-4 h-4 mr-1.5" />Enable</>
                 )}

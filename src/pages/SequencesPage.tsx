@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Pause, XCircle, Zap, Activity, ChevronDown, ChevronRight, Check, ListChecks, Users } from "lucide-react";
+import { Loader2, Pause, Play, XCircle, Zap, Activity, ChevronDown, ChevronRight, Check, ListChecks, Users } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -131,6 +131,21 @@ function ActiveAutomationsTab() {
     },
   });
 
+  const resumeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("contact_sequences")
+        .update({ status: "active" })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contact_sequences_monitor"] });
+      qc.invalidateQueries({ queryKey: ["next_messages"] });
+      toast.success("Automation resumed");
+    },
+  });
+
   const cancelMutation = useMutation({
     mutationFn: async (row: ContactSequenceRow) => {
       const { error } = await supabase
@@ -219,18 +234,31 @@ function ActiveAutomationsTab() {
                       <Badge variant={sc.variant}>{sc.label}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {row.status === "active" && (
+                      {(row.status === "active" || row.status === "paused") && (
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Pause"
-                            onClick={() => pauseMutation.mutate(row.id)}
-                            disabled={pauseMutation.isPending}
-                          >
-                            <Pause className="w-4 h-4" />
-                          </Button>
+                          {row.status === "active" ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Pause"
+                              onClick={() => pauseMutation.mutate(row.id)}
+                              disabled={pauseMutation.isPending}
+                            >
+                              <Pause className="w-4 h-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Resume"
+                              onClick={() => resumeMutation.mutate(row.id)}
+                              disabled={resumeMutation.isPending}
+                            >
+                              <Play className="w-4 h-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"

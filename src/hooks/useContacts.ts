@@ -10,24 +10,24 @@ export type ContactUpdate = TablesUpdate<"contacts">;
 
 export const SALES_STAGES = [
   { key: "Lead In", label: "Lead In" },
-  { key: "No Contact x1 Text", label: "No Contact x1 Text 🤖" },
-  { key: "No Contact 2x Text", label: "No Contact 2x Text 🤖" },
-  { key: "No Contact 3x Text", label: "No Contact 3x Text 🤖" },
-  { key: "No Contact → Long Term Nurture", label: "No Contact → Long Term Nurture 🤖" },
-  { key: "Ready to Close", label: "Ready to Close 🔥" },
+  { key: "No Contact x1 Text", label: "No Contact x1 Text" },
+  { key: "No Contact 2x Text", label: "No Contact 2x Text" },
+  { key: "No Contact 3x Text", label: "No Contact 3x Text" },
+  { key: "No Contact → Long Term Nurture", label: "No Contact → Long Term Nurture" },
+  { key: "Ready to Close", label: "Ready to Close" },
   { key: "Zoom Call Booked", label: "Zoom Call Booked" },
   { key: "Zoom Call Finished", label: "Zoom Call Finished (Follow Up?)" },
-  { key: "Cancelled/Rescheduled", label: "Cancelled/Rescheduled 🤖" },
-  { key: "No Showed to Zoom", label: "No Showed to Zoom 🤖" },
-  { key: "Client Closed", label: "Client Closed 🤖" },
+  { key: "Cancelled/Rescheduled", label: "Cancelled/Rescheduled" },
+  { key: "No Showed to Zoom", label: "No Showed to Zoom" },
+  { key: "Client Closed", label: "Client Closed" },
 ] as const;
 
 export const ONBOARDING_STAGES = [
-  { key: "New Client Waiting for Onboarding Form", label: "New Client Waiting for Onboarding Form 🤖" },
+  { key: "New Client Waiting for Onboarding Form", label: "New Client Waiting for Onboarding Form" },
   { key: "Form Submitted", label: "Form Submitted" },
-  { key: "Project Ready to Start", label: "Project Ready to Start 🤖" },
-  { key: "Launch Call Booked", label: "Launch Call Booked 🚀" },
-  { key: "GMB Issue", label: "GMB Issue / Phone Verification Issue 🚨" },
+  { key: "Project Ready to Start", label: "Project Ready to Start" },
+  { key: "Launch Call Booked", label: "Launch Call Booked" },
+  { key: "GMB Issue", label: "GMB Issue / Phone Verification Issue" },
   { key: "Approved Retainer", label: "Approved - Client on Retainer" },
   { key: "Credit Card Declined", label: "Credit Card Declined" },
   { key: "Client Churned", label: "Client Churned" },
@@ -35,10 +35,10 @@ export const ONBOARDING_STAGES = [
 
 export const OUTREACH_STAGES = [
   { key: "Replied", label: "Replied" },
-  { key: "Interested – Positive Reply", label: "Interested 🔥" },
+  { key: "Interested – Positive Reply", label: "Interested" },
   { key: "Follow-up", label: "Follow-up" },
   { key: "Not Interested", label: "Not Interested" },
-  { key: "Appt Set", label: "Appt Set 📅" },
+  { key: "Appt Set", label: "Appt Set" },
   { key: "Stale", label: "Stale" },
 ] as const;
 

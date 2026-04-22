@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,11 +14,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Pause, Play, XCircle, Zap, Activity, ChevronDown, ChevronRight, Check, ListChecks, Users } from "lucide-react";
+import { Loader2, Pause, Play, XCircle, Zap, ChevronDown, ChevronRight, Check, ListChecks, Users } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
-// ---- Active Automations (existing) ----
+type Tab = "active" | "templates" | "client_sequences";
+
+const TAB_LABELS: Record<Tab, string> = {
+  active: "Active",
+  templates: "My Sequences",
+  client_sequences: "Client Sequences",
+};
+
+// ---- Active Automations ----
 
 type ContactSequenceRow = {
   id: string;
@@ -101,12 +107,12 @@ function useNextScheduledMessages(contactSequenceIds: string[]) {
   });
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  active: { label: "Active", variant: "default" },
-  paused: { label: "Paused", variant: "secondary" },
-  completed: { label: "Completed", variant: "outline" },
-  stopped: { label: "Cancelled", variant: "destructive" },
-  failed: { label: "Failed", variant: "destructive" },
+const statusLabel: Record<string, string> = {
+  active: "Active",
+  paused: "Paused",
+  completed: "Completed",
+  stopped: "Cancelled",
+  failed: "Failed",
 };
 
 function ActiveAutomationsTab() {
@@ -170,7 +176,7 @@ function ActiveAutomationsTab() {
     <div className="space-y-4">
       <div className="flex justify-end">
         <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-40 bg-secondary/40 border-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -184,100 +190,143 @@ function ActiveAutomationsTab() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : rows.length === 0 ? (
-        <Card className="bg-card border-border">
-          <CardContent className="p-12 text-center">
-            <Zap className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
-            <p className="text-muted-foreground">
-              No active automations. Automations will appear here automatically when contacts enter a pipeline stage.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="text-center py-16">
+          <Zap className="w-6 h-6 mx-auto mb-3 text-muted-foreground/60" strokeWidth={1.5} />
+          <p className="text-sm text-muted-foreground">
+            No active automations. They'll appear here when contacts enter a pipeline stage.
+          </p>
+        </div>
       ) : (
-        <Card className="bg-card border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Contact</TableHead>
-                <TableHead>Flow</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead>Next Message</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                const sc = statusConfig[row.status] || statusConfig.active;
-                const nextAt = nextMessages[row.id];
-                return (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium">
-                      {row.contacts?.full_name || "Unknown"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {row.sequences?.name || "Unknown flow"}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">
-                        Step {row.current_step} of {row.step_count}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {row.status === "active" && nextAt
-                        ? format(new Date(nextAt), "MMM d, h:mm a")
-                        : "—"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={sc.variant}>{sc.label}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(row.status === "active" || row.status === "paused") && (
-                        <div className="flex justify-end gap-1">
-                          {row.status === "active" ? (
+        <>
+          {/* Desktop: table */}
+          <div className="hidden md:block rounded-2xl border border-border/60 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border/60 hover:bg-transparent">
+                  <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Contact</TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Flow</TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Progress</TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Next</TableHead>
+                  <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Status</TableHead>
+                  <TableHead className="text-right text-[11px] uppercase tracking-wider text-muted-foreground font-medium">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => {
+                  const nextAt = nextMessages[row.id];
+                  return (
+                    <TableRow key={row.id} className="border-border/40 hover:bg-secondary/30">
+                      <TableCell className="font-medium text-foreground">
+                        {row.contacts?.full_name || "Unknown"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {row.sequences?.name || "Unknown flow"}
+                      </TableCell>
+                      <TableCell className="text-sm text-foreground/80 tabular-nums">
+                        {row.current_step} / {row.step_count}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm tabular-nums">
+                        {row.status === "active" && nextAt
+                          ? format(new Date(nextAt), "MMM d, h:mm a")
+                          : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] border-border/60 text-muted-foreground font-normal">
+                          {statusLabel[row.status] || row.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(row.status === "active" || row.status === "paused") && (
+                          <div className="flex justify-end gap-1">
+                            {row.status === "active" ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground"
+                                title="Pause"
+                                onClick={() => pauseMutation.mutate(row.id)}
+                                disabled={pauseMutation.isPending}
+                              >
+                                <Pause className="w-4 h-4" strokeWidth={1.5} />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground"
+                                title="Resume"
+                                onClick={() => resumeMutation.mutate(row.id)}
+                                disabled={resumeMutation.isPending}
+                              >
+                                <Play className="w-4 h-4" strokeWidth={1.5} />
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8"
-                              title="Pause"
-                              onClick={() => pauseMutation.mutate(row.id)}
-                              disabled={pauseMutation.isPending}
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              title="Cancel"
+                              onClick={() => cancelMutation.mutate(row)}
+                              disabled={cancelMutation.isPending}
                             >
-                              <Pause className="w-4 h-4" />
+                              <XCircle className="w-4 h-4" strokeWidth={1.5} />
                             </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              title="Resume"
-                              onClick={() => resumeMutation.mutate(row.id)}
-                              disabled={resumeMutation.isPending}
-                            >
-                              <Play className="w-4 h-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive"
-                            title="Cancel"
-                            onClick={() => cancelMutation.mutate(row)}
-                            disabled={cancelMutation.isPending}
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        </div>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile: flat card list */}
+          <ul className="md:hidden bg-card border border-border/60 rounded-2xl divide-y divide-border/40 overflow-hidden">
+            {rows.map((row) => {
+              const nextAt = nextMessages[row.id];
+              return (
+                <li key={row.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{row.contacts?.full_name || "Unknown"}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {row.sequences?.name || "Unknown"} · Step {row.current_step}/{row.step_count}
+                      </p>
+                      {row.status === "active" && nextAt && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Next: {format(new Date(nextAt), "MMM d, h:mm a")}
+                        </p>
                       )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] border-border/60 text-muted-foreground font-normal shrink-0">
+                      {statusLabel[row.status] || row.status}
+                    </Badge>
+                  </div>
+                  {(row.status === "active" || row.status === "paused") && (
+                    <div className="flex gap-1 mt-2">
+                      {row.status === "active" ? (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => pauseMutation.mutate(row.id)} disabled={pauseMutation.isPending}>
+                          <Pause className="w-3 h-3 mr-1" strokeWidth={1.5} /> Pause
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => resumeMutation.mutate(row.id)} disabled={resumeMutation.isPending}>
+                          <Play className="w-3 h-3 mr-1" strokeWidth={1.5} /> Resume
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => cancelMutation.mutate(row)} disabled={cancelMutation.isPending}>
+                        <XCircle className="w-3 h-3 mr-1" strokeWidth={1.5} /> Cancel
+                      </Button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
       )}
     </div>
   );
@@ -363,13 +412,10 @@ function StepRow({ step }: { step: SequenceStep }) {
       : "Immediate";
 
   return (
-    <div className="border border-border rounded-lg p-3 space-y-2 bg-secondary/20">
+    <div className="rounded-xl bg-secondary/30 p-3 space-y-2">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-mono text-muted-foreground w-8">#{step.step_order}</span>
-        <Badge
-          variant={step.message_type === "sms" ? "default" : "secondary"}
-          className="text-[10px] uppercase tracking-wide"
-        >
+        <Badge variant="outline" className="text-[10px] uppercase tracking-wide border-border/60 text-muted-foreground font-normal">
           {step.message_type}
         </Badge>
         <span className="text-xs text-muted-foreground">{delayLabel}</span>
@@ -378,19 +424,19 @@ function StepRow({ step }: { step: SequenceStep }) {
         value={content}
         onChange={(e) => setContent(e.target.value)}
         rows={3}
-        className="bg-background border-border text-sm font-mono resize-none"
+        className="bg-background border-border/60 text-sm font-mono resize-none"
       />
       {isDirty && (
         <Button
           size="sm"
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="gradient-primary text-primary-foreground h-7 text-xs"
+          className="h-7 text-xs"
         >
           {saveMutation.isPending ? (
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" strokeWidth={1.5} />
           ) : (
-            <Check className="w-3 h-3 mr-1" />
+            <Check className="w-3 h-3 mr-1" strokeWidth={1.5} />
           )}
           Save
         </Button>
@@ -419,29 +465,23 @@ function SequenceCard({ seq }: { seq: Sequence }) {
   });
 
   return (
-    <Card className="bg-card border-border shadow-card">
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
       <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/40 transition-colors rounded-t-lg"
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/30 transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{seq.name}</p>
+          <p className="text-sm font-medium text-foreground truncate">{seq.name}</p>
           <p className="text-xs text-muted-foreground">
             {seq.pipeline} · {seq.stage}
           </p>
         </div>
-        <div
-          className="flex items-center gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="text-xs text-muted-foreground">
-            {seq.is_active ? "Active" : "Inactive"}
-          </span>
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <Switch
             checked={seq.is_active}
             onCheckedChange={(val) => toggleActive.mutate(val)}
@@ -451,7 +491,7 @@ function SequenceCard({ seq }: { seq: Sequence }) {
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-2 border-t border-border pt-3">
+        <div className="px-4 pb-4 pt-3 space-y-2 border-t border-border/40">
           {stepsLoading ? (
             <div className="flex justify-center py-4">
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -463,7 +503,7 @@ function SequenceCard({ seq }: { seq: Sequence }) {
           )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -473,19 +513,17 @@ function SequenceTemplatesTab() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (!sequences || sequences.length === 0) {
     return (
-      <Card className="bg-card border-border">
-        <CardContent className="p-12 text-center">
-          <ListChecks className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-muted-foreground">No sequences found.</p>
-        </CardContent>
-      </Card>
+      <div className="text-center py-16">
+        <ListChecks className="w-6 h-6 mx-auto mb-3 text-muted-foreground/60" strokeWidth={1.5} />
+        <p className="text-sm text-muted-foreground">No sequences found.</p>
+      </div>
     );
   }
 
@@ -554,7 +592,6 @@ function useClientTemplates(businessId?: string | null) {
 
 function ClientStepRow({
   tpl,
-  businessId,
   globalContent,
 }: {
   tpl: ClientTemplate;
@@ -613,13 +650,13 @@ function ClientStepRow({
     : "Immediate";
 
   return (
-    <div className="border border-border rounded-lg p-3 space-y-2 bg-secondary/20">
+    <div className="rounded-xl bg-secondary/30 p-3 space-y-2">
       <div className="flex items-center gap-2 flex-wrap justify-between">
         <div className="flex items-center gap-2">
-          <Badge variant={tpl.message_type === "sms" ? "default" : "secondary"} className="text-[10px] uppercase tracking-wide">
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wide border-border/60 text-muted-foreground font-normal">
             {tpl.message_type}
           </Badge>
-          <span className="text-xs font-medium">{STEP_LABELS[tpl.step_name] ?? tpl.step_name}</span>
+          <span className="text-xs font-medium text-foreground">{STEP_LABELS[tpl.step_name] ?? tpl.step_name}</span>
           {tpl.delay_seconds > 0 && (
             <span className="text-xs text-muted-foreground">{delayLabel}</span>
           )}
@@ -637,7 +674,7 @@ function ClientStepRow({
         )}
       </div>
       {globalContent && isOverride && (
-        <p className="text-[11px] text-muted-foreground italic border-l-2 border-border pl-2">
+        <p className="text-[11px] text-muted-foreground italic border-l-2 border-border/60 pl-2">
           Global: {globalContent.slice(0, 80)}{globalContent.length > 80 ? "…" : ""}
         </p>
       )}
@@ -645,7 +682,7 @@ function ClientStepRow({
         value={content}
         onChange={(e) => setContent(e.target.value)}
         rows={3}
-        className="bg-background border-border text-sm font-mono resize-none"
+        className="bg-background border-border/60 text-sm font-mono resize-none"
       />
       <p className="text-[10px] text-muted-foreground">
         Variables: <code className="font-mono">{"{{first_name}} {{my_name}} {{company_name}} {{my_phone}} {{quote_form_link}} {{website_url}} {{review_link}} {{discount_amount}} {{reactivation_offer}}"}</code>
@@ -655,9 +692,9 @@ function ClientStepRow({
           size="sm"
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
-          className="gradient-primary text-primary-foreground h-7 text-xs"
+          className="h-7 text-xs"
         >
-          {saveMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Check className="w-3 h-3 mr-1" />}
+          {saveMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" strokeWidth={1.5} /> : <Check className="w-3 h-3 mr-1" strokeWidth={1.5} />}
           Save
         </Button>
       )}
@@ -680,7 +717,6 @@ function ClientFlowCard({
   const [expanded, setExpanded] = useState(false);
   const hasOverrides = templates.some((t) => t.business_id === businessId);
 
-  // For business view: allow adding override for a step that has none
   const globalSteps = globalTemplates?.filter((t) => t.flow_name === flowName) ?? [];
   const overriddenSteps = new Set(templates.map((t) => t.step_name));
   const missingOverrides = businessId ? globalSteps.filter((t) => !overriddenSteps.has(t.step_name)) : [];
@@ -708,30 +744,30 @@ function ClientFlowCard({
   });
 
   return (
-    <Card className="bg-card border-border shadow-card">
+    <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
       <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/40 transition-colors rounded-t-lg"
+        className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/30 transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+          <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">{FLOW_LABELS[flowName] ?? flowName}</p>
+          <p className="text-sm font-medium text-foreground">{FLOW_LABELS[flowName] ?? flowName}</p>
           <p className="text-xs text-muted-foreground font-mono">{flowName}</p>
         </div>
         {businessId && hasOverrides && (
-          <Badge variant="outline" className="text-[10px] border-primary/40 text-primary">
+          <Badge variant="outline" className="text-[10px] border-border/60 text-muted-foreground font-normal">
             {templates.length} override{templates.length !== 1 ? "s" : ""}
           </Badge>
         )}
-        <span className="text-xs text-muted-foreground">{(businessId ? templates : globalSteps.length > 0 ? globalSteps : templates).length} steps</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{(businessId ? templates : globalSteps.length > 0 ? globalSteps : templates).length} steps</span>
       </div>
 
       {expanded && (
-        <div className="px-4 pb-4 space-y-2 border-t border-border pt-3">
+        <div className="px-4 pb-4 pt-3 space-y-2 border-t border-border/40">
           {templates.map((tpl) => (
             <ClientStepRow
               key={tpl.id}
@@ -741,16 +777,16 @@ function ClientFlowCard({
             />
           ))}
           {missingOverrides.map((globalTpl) => (
-            <div key={globalTpl.step_name} className="border border-dashed border-border rounded-lg p-3 flex items-center justify-between">
+            <div key={globalTpl.step_name} className="rounded-xl border border-dashed border-border/60 p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[10px] uppercase">{globalTpl.message_type}</Badge>
+                <Badge variant="outline" className="text-[10px] uppercase border-border/60 text-muted-foreground font-normal">{globalTpl.message_type}</Badge>
                 <span className="text-xs text-muted-foreground">{STEP_LABELS[globalTpl.step_name] ?? globalTpl.step_name}</span>
                 <span className="text-xs text-muted-foreground/60 italic">Using global</span>
               </div>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="h-6 text-xs"
+                className="h-6 text-xs text-muted-foreground"
                 onClick={() => addOverride.mutate(globalTpl)}
                 disabled={addOverride.isPending}
               >
@@ -760,7 +796,7 @@ function ClientFlowCard({
           ))}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -771,15 +807,10 @@ export function ClientSequencesTab({ businessId }: { businessId?: string | null 
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
-
-  // Group templates by flow_name
-  const displayTemplates = businessId
-    ? (templates ?? [])
-    : (templates ?? []);
 
   const allFlowNames = businessId
     ? [...new Set([...(globalTemplates ?? []).map((t) => t.flow_name), ...(templates ?? []).map((t) => t.flow_name)])]
@@ -787,22 +818,18 @@ export function ClientSequencesTab({ businessId }: { businessId?: string | null 
 
   if (allFlowNames.length === 0) {
     return (
-      <Card className="bg-card border-border">
-        <CardContent className="p-12 text-center">
-          <Users className="w-10 h-10 mx-auto mb-3 text-muted-foreground/40" />
-          <p className="text-muted-foreground text-sm">No client sequence templates found.</p>
-          <p className="text-xs text-muted-foreground mt-1">Run the SQL migration to seed the default templates.</p>
-        </CardContent>
-      </Card>
+      <div className="text-center py-16">
+        <Users className="w-6 h-6 mx-auto mb-3 text-muted-foreground/60" strokeWidth={1.5} />
+        <p className="text-sm text-muted-foreground">No client sequence templates found.</p>
+        <p className="text-xs text-muted-foreground mt-1">Run the SQL migration to seed the default templates.</p>
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
       {allFlowNames.map((flowName) => {
-        const flowTemplates = businessId
-          ? (templates ?? []).filter((t) => t.flow_name === flowName)
-          : (templates ?? []).filter((t) => t.flow_name === flowName);
+        const flowTemplates = (templates ?? []).filter((t) => t.flow_name === flowName);
         return (
           <ClientFlowCard
             key={flowName}
@@ -820,37 +847,40 @@ export function ClientSequencesTab({ businessId }: { businessId?: string | null 
 // ---- Page ----
 
 export default function SequencesPage() {
+  const [tab, setTab] = useState<Tab>("active");
+
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-display font-bold flex items-center gap-2">
-          <Activity className="w-6 h-6 text-primary" />
-          Sequences
-        </h1>
+    <div className="px-4 md:px-6 pt-8 max-w-4xl mx-auto animate-fade-in">
+      <header className="px-1 mb-6">
+        <h1 className="font-serif text-3xl text-foreground">Sequences</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Monitor active automations and manage sequence templates.
         </p>
+      </header>
+
+      <div role="tablist" className="inline-flex items-center bg-secondary/60 rounded-full p-0.5 mb-6">
+        {(["active", "templates", "client_sequences"] as Tab[]).map((t) => (
+          <button
+            key={t}
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+              tab === t
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {TAB_LABELS[t]}
+          </button>
+        ))}
       </div>
 
-      <Tabs defaultValue="active">
-        <TabsList className="mb-4">
-          <TabsTrigger value="active">Active Automations</TabsTrigger>
-          <TabsTrigger value="templates">My Sequences</TabsTrigger>
-          <TabsTrigger value="client_sequences">Client Sequences</TabsTrigger>
-        </TabsList>
+      {tab === "active" && <ActiveAutomationsTab />}
+      {tab === "templates" && <SequenceTemplatesTab />}
+      {tab === "client_sequences" && <ClientSequencesTab />}
 
-        <TabsContent value="active">
-          <ActiveAutomationsTab />
-        </TabsContent>
-
-        <TabsContent value="templates">
-          <SequenceTemplatesTab />
-        </TabsContent>
-
-        <TabsContent value="client_sequences">
-          <ClientSequencesTab />
-        </TabsContent>
-      </Tabs>
+      <div className="h-12" />
     </div>
   );
 }

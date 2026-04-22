@@ -4,13 +4,10 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-p
 import { useUpdateContact, type Contact, OUTREACH_STAGES } from "@/hooks/useContacts";
 import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { GripVertical, MoreHorizontal, Phone, ThumbsUp, CalendarCheck, Ban, MessageSquareOff, Search } from "lucide-react";
+import { GripVertical, MoreHorizontal, ThumbsUp, CalendarCheck, Ban, MessageSquareOff, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAddToDNC } from "@/hooks/useDNC";
 import { toast } from "sonner";
@@ -20,10 +17,16 @@ const ANGLE_LABEL: Record<string, string> = {
   free_website: "Free Website",
   leads_incentive: "Leads Incentive",
 };
-const ANGLE_CLASS: Record<string, string> = {
-  free_website: "bg-blue-500/15 text-blue-500 border-blue-500/30",
-  leads_incentive: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30",
+const ANGLE_DOT: Record<string, string> = {
+  free_website: "bg-blue-400",
+  leads_incentive: "bg-emerald-400",
 };
+
+const ANGLE_FILTERS: { key: string; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "free_website", label: "Free Website" },
+  { key: "leads_incentive", label: "Leads Incentive" },
+];
 
 interface LastInbound {
   contact_id: string;
@@ -145,25 +148,33 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex items-center gap-3 flex-wrap mb-4">
         <div className="relative max-w-xs flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
           <Input
-            placeholder="Search..."
+            placeholder="Search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-9"
+            className="pl-9 h-9 bg-secondary/40 border-0 focus-visible:ring-1 focus-visible:ring-ring/50"
           />
         </div>
-        <Select value={angleFilter} onValueChange={setAngleFilter}>
-          <SelectTrigger className="w-[180px] h-9">
-            <SelectValue placeholder="All angles" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All angles</SelectItem>
-            <SelectItem value="free_website">Free Website</SelectItem>
-            <SelectItem value="leads_incentive">Leads Incentive</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="text-xs text-muted-foreground">
+        <div role="tablist" className="inline-flex items-center bg-secondary/60 rounded-full p-0.5">
+          {ANGLE_FILTERS.map((a) => (
+            <button
+              key={a.key}
+              role="tab"
+              aria-selected={angleFilter === a.key}
+              onClick={() => setAngleFilter(a.key)}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                angleFilter === a.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {a.key !== "all" && <span className={`w-2 h-2 rounded-full ${ANGLE_DOT[a.key]}`} />}
+              {a.label}
+            </button>
+          ))}
+        </div>
+        <div className="text-xs text-muted-foreground tabular-nums">
           {filtered.length} of {contacts.length}
         </div>
       </div>
@@ -171,7 +182,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       {isLoading ? (
         <div className="flex gap-3 overflow-x-auto flex-1 pb-4">
           {OUTREACH_STAGES.map((s) => (
-            <div key={s.key} className="w-64 md:w-72 shrink-0 bg-secondary/50 rounded-lg animate-pulse h-64" />
+            <div key={s.key} className="w-64 md:w-72 shrink-0 bg-secondary/40 rounded-2xl animate-pulse h-64" />
           ))}
         </div>
       ) : (
@@ -180,11 +191,9 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
             {columns.map((col) => (
               <div key={col.key} className="w-64 md:w-72 shrink-0 snap-start flex flex-col">
                 <div className="flex items-center justify-between mb-3 px-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-display font-semibold">{col.label}</h3>
-                    <Badge variant="secondary" className="text-xs h-5 min-w-[1.25rem] flex items-center justify-center">
-                      {col.contacts.length}
-                    </Badge>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-sm font-medium text-foreground truncate">{col.label}</h3>
+                    <span className="text-xs text-muted-foreground tabular-nums shrink-0">{col.contacts.length}</span>
                   </div>
                 </div>
 
@@ -193,8 +202,8 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`flex-1 rounded-lg p-2 space-y-2 min-h-[200px] transition-colors ${
-                        snapshot.isDraggingOver ? "bg-accent/30 border border-accent/50" : "bg-secondary/30"
+                      className={`flex-1 rounded-2xl p-2 space-y-2 min-h-[200px] transition-colors ${
+                        snapshot.isDraggingOver ? "bg-secondary/60" : "bg-secondary/30"
                       }`}
                     >
                       {col.contacts.map((contact, idx) => {
@@ -208,59 +217,57 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                                 {...provided.draggableProps}
                                 className={`group ${snapshot.isDragging ? "z-50" : ""}`}
                               >
-                                <Card
-                                  className={`bg-card border-border cursor-pointer transition-all ${
-                                    snapshot.isDragging ? "shadow-glow rotate-1" : "hover:border-accent/40"
+                                <div
+                                  className={`bg-card border border-border/60 rounded-xl cursor-pointer transition-all ${
+                                    snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : "hover:bg-secondary/30"
                                   }`}
                                   onClick={() => navigate(`/contacts/${contact.id}`)}
                                 >
-                                  <CardContent className="p-3 flex items-start gap-2">
+                                  <div className="p-3 flex items-start gap-2">
                                     <div
                                       {...provided.dragHandleProps}
-                                      className="mt-0.5 opacity-0 group-hover:opacity-50 transition-opacity cursor-grab"
+                                      className="hidden md:block mt-0.5 opacity-0 group-hover:opacity-50 transition-opacity cursor-grab"
                                     >
-                                      <GripVertical className="w-4 h-4 text-muted-foreground" />
+                                      <GripVertical className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.5} />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between">
-                                        <p className="text-sm font-medium font-display truncate">{contact.full_name}</p>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <p className="text-[15px] font-medium text-foreground truncate">{contact.full_name}</p>
                                         <DropdownMenu>
                                           <DropdownMenuTrigger asChild>
                                             <Button
                                               variant="ghost"
                                               size="icon"
-                                              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                              className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                                               onClick={(e) => e.stopPropagation()}
                                             >
-                                              <MoreHorizontal className="w-3.5 h-3.5" />
+                                              <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
                                             </Button>
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenuItem onClick={() => moveTo(contact, "Interested – Positive Reply")}>
-                                              <ThumbsUp className="w-4 h-4 mr-2" /> Mark Interested
+                                              <ThumbsUp className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Interested
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => moveTo(contact, "Follow-up")}>
-                                              <MessageSquareOff className="w-4 h-4 mr-2" /> Move to Follow-up
+                                              <MessageSquareOff className="w-4 h-4 mr-2" strokeWidth={1.5} /> Move to Follow-up
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => moveTo(contact, "Appt Set")}>
-                                              <CalendarCheck className="w-4 h-4 mr-2" /> Mark Appt Set
+                                              <CalendarCheck className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Appt Set
                                             </DropdownMenuItem>
                                             <DropdownMenuItem className="text-destructive" onClick={() => handleDNC(contact)}>
-                                              <Ban className="w-4 h-4 mr-2" /> DNC
+                                              <Ban className="w-4 h-4 mr-2" strokeWidth={1.5} /> DNC
                                             </DropdownMenuItem>
                                           </DropdownMenuContent>
                                         </DropdownMenu>
                                       </div>
                                       {contact.phone && (
-                                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground">
-                                          <Phone className="w-3 h-3" />
-                                          <span className="truncate">{contact.phone}</span>
-                                        </div>
+                                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{contact.phone}</p>
                                       )}
                                       {angle && (
-                                        <Badge variant="outline" className={`text-[10px] mt-1.5 h-4 ${ANGLE_CLASS[angle] ?? ""}`}>
-                                          {ANGLE_LABEL[angle] ?? angle}
-                                        </Badge>
+                                        <div className="inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-full border border-border/60">
+                                          <span className={`w-1.5 h-1.5 rounded-full ${ANGLE_DOT[angle] ?? "bg-muted-foreground"}`} />
+                                          <span className="text-[10px] text-muted-foreground">{ANGLE_LABEL[angle] ?? angle}</span>
+                                        </div>
                                       )}
                                       {inbound && (
                                         <div className="mt-1.5 text-[11px] text-muted-foreground">
@@ -271,8 +278,8 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                                         </div>
                                       )}
                                     </div>
-                                  </CardContent>
-                                </Card>
+                                  </div>
+                                </div>
                               </div>
                             )}
                           </Draggable>

@@ -3,24 +3,18 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Loader2,
   Search,
-  FileText,
   Copy,
   ChevronDown,
   ChevronUp,
-  CheckCircle2,
-  AlertCircle,
   Download,
   ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 
-/** Human-readable labels for the onboarding form fields. */
 const FIELD_LABELS: Record<string, string> = {
   full_name: "Full Name",
   email: "Email",
@@ -85,7 +79,6 @@ function useAllOnboardingSubmissions() {
   });
 }
 
-/** Match any submission field against the search query. */
 function matchesQuery(s: Submission, q: string) {
   if (!q.trim()) return true;
   const needle = q.toLowerCase();
@@ -101,10 +94,12 @@ function matchesQuery(s: Submission, q: string) {
   return haystack.includes(needle);
 }
 
+type FilterType = "all" | "matched" | "unmatched";
+
 export default function OnboardingSubmissionsPage() {
   const { data: submissions, isLoading } = useAllOnboardingSubmissions();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "matched" | "unmatched">("all");
+  const [filter, setFilter] = useState<FilterType>("all");
 
   const filtered = useMemo(() => {
     if (!submissions) return [];
@@ -118,84 +113,74 @@ export default function OnboardingSubmissionsPage() {
 
   const matchedCount = submissions?.filter((s) => s.contact_id).length ?? 0;
   const unmatchedCount = submissions?.filter((s) => !s.contact_id).length ?? 0;
+  const total = submissions?.length ?? 0;
 
   return (
-    <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <FileText className="w-5 h-5 text-primary" />
-          <h1 className="text-2xl font-display font-bold">Onboarding Submissions</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Every submission from the client onboarding form at{" "}
-          <code className="text-xs bg-secondary px-1.5 py-0.5 rounded">vargaflow.com/onboarding-form</code>.
+    <div className="px-4 md:px-6 pt-8 max-w-3xl mx-auto animate-fade-in">
+      <header className="px-1 mb-6">
+        <h1 className="font-serif text-3xl text-foreground">Submissions</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Onboarding form responses from clients.
         </p>
-      </div>
+      </header>
 
-      {/* Search + Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, business, email, phone, city..."
-            className="pl-9 bg-secondary border-border"
+            placeholder="Search"
+            className="pl-9 h-10 text-base bg-secondary/40 border-0 focus-visible:ring-1 focus-visible:ring-ring/50"
           />
         </div>
-        <div className="flex gap-1 bg-secondary border border-border rounded-md p-1">
-          {(["all", "matched", "unmatched"] as const).map((f) => (
+        <div role="tablist" className="inline-flex items-center bg-secondary/60 rounded-full p-0.5 self-start">
+          {(["all", "matched", "unmatched"] as FilterType[]).map((f) => (
             <button
               key={f}
+              role="tab"
+              aria-selected={filter === f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                 filter === f
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {f === "all" && `All (${submissions?.length ?? 0})`}
-              {f === "matched" && `Matched (${matchedCount})`}
-              {f === "unmatched" && `Unmatched (${unmatchedCount})`}
+              {f === "all" && `All ${total}`}
+              {f === "matched" && `Matched ${matchedCount}`}
+              {f === "unmatched" && `Unmatched ${unmatchedCount}`}
             </button>
           ))}
         </div>
       </div>
 
-      {/* List */}
       {isLoading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : !submissions || submissions.length === 0 ? (
-        <Card className="bg-card border-border">
-          <CardContent className="py-16 text-center">
-            <FileText className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No onboarding submissions yet.</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Submissions from the public form will appear here.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="text-center py-16">
+          <p className="text-sm text-muted-foreground">No onboarding submissions yet.</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Submissions from the public form will appear here.
+          </p>
+        </div>
       ) : filtered.length === 0 ? (
-        <Card className="bg-card border-border">
-          <CardContent className="py-12 text-center">
-            <p className="text-sm text-muted-foreground">No submissions match your search.</p>
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground text-center py-12">No submissions match your search.</p>
       ) : (
-        <div className="space-y-3">
+        <ul className="bg-card border border-border/60 rounded-2xl divide-y divide-border/40 overflow-hidden">
           {filtered.map((s) => (
             <SubmissionRow key={s.id} submission={s} />
           ))}
-        </div>
+        </ul>
       )}
+
+      <div className="h-12" />
     </div>
   );
 }
 
-/** Downloads a single photo at its original quality. */
 async function downloadPhoto(url: string, filename: string) {
   try {
     const res = await fetch(url);
@@ -228,29 +213,26 @@ function PhotoGallery({
     toast.info(`Downloading ${photos.length} photos…`);
     for (let i = 0; i < photos.length; i++) {
       const p = photos[i];
-      // Stagger slightly so the browser doesn't choke on simultaneous downloads
       await new Promise((r) => setTimeout(r, i * 150));
       downloadPhoto(p.url, p.name || `photo-${i + 1}.jpg`);
     }
   };
 
   return (
-    <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
+    <div className="rounded-xl bg-secondary/30 p-3 mb-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
-          <ImageIcon className="w-4 h-4 text-primary" />
-          <span className="text-sm font-semibold">
-            Photos ({photos.length})
-          </span>
+          <ImageIcon className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+          <span className="text-xs font-medium text-foreground">Photos ({photos.length})</span>
         </div>
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={downloadAll}>
-          <Download className="w-3 h-3 mr-1" /> Download All
+        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={downloadAll}>
+          <Download className="w-3 h-3 mr-1" strokeWidth={1.5} /> Download all
         </Button>
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
         {photos.map((p, i) => (
-          <div key={`${p.url}-${i}`} className="group relative aspect-square overflow-hidden rounded-md border border-border bg-secondary">
+          <div key={`${p.url}-${i}`} className="group relative aspect-square overflow-hidden rounded-lg border border-border/60 bg-secondary">
             <img
               src={p.url}
               alt={p.name}
@@ -266,13 +248,12 @@ function PhotoGallery({
               className="absolute bottom-1 right-1 rounded-full bg-background/90 p-1.5 text-foreground opacity-0 shadow-sm transition-opacity hover:bg-background group-hover:opacity-100"
               title="Download original"
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5" strokeWidth={1.5} />
             </button>
           </div>
         ))}
       </div>
 
-      {/* Lightbox */}
       {lightbox !== null && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4"
@@ -291,7 +272,7 @@ function PhotoGallery({
             }}
             className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-md bg-background px-4 py-2 text-sm font-medium text-foreground shadow hover:bg-secondary"
           >
-            <Download className="w-4 h-4 inline mr-1.5" />
+            <Download className="w-4 h-4 inline mr-1.5" strokeWidth={1.5} />
             Download Original
           </button>
           <button
@@ -299,7 +280,7 @@ function PhotoGallery({
             className="absolute right-4 top-4 rounded-full bg-background/80 p-2 text-foreground hover:bg-background"
             aria-label="Close"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -328,52 +309,42 @@ function SubmissionRow({ submission }: { submission: Submission }) {
   };
 
   return (
-    <Card className="bg-card border-border overflow-hidden">
-      {/* Summary row */}
+    <li>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors text-left"
       >
-        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-          <FileText className="w-4 h-4 text-primary" />
-        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium truncate">{data.full_name || "(No name)"}</p>
-            {matched ? (
-              <Badge variant="outline" className="text-[10px] border-green-500/40 text-green-600 gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Matched
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-600 gap-1">
-                <AlertCircle className="w-3 h-3" /> Unmatched
-              </Badge>
-            )}
+            <p className="text-[15px] font-medium text-foreground truncate">{data.full_name || "(No name)"}</p>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-border/60 text-[10px] text-muted-foreground">
+              <span className={`w-1.5 h-1.5 rounded-full ${matched ? "bg-emerald-400" : "bg-amber-400"}`} />
+              {matched ? "Matched" : "Unmatched"}
+            </span>
           </div>
-          <p className="text-xs text-muted-foreground truncate">
+          <p className="text-xs text-muted-foreground truncate mt-0.5">
             {data.business_name || "—"}
             {data.email ? ` · ${data.email}` : ""}
-            {data.business_phone ? ` · ${data.business_phone}` : ""}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-[11px] text-muted-foreground/80 mt-0.5">
             {format(new Date(submission.submitted_at), "MMM d, yyyy · h:mm a")}
             {" · "}
             {formatDistanceToNow(new Date(submission.submitted_at), { addSuffix: true })}
           </p>
         </div>
-        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+        {expanded
+          ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
+          : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />}
       </button>
 
-      {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-border bg-secondary/20 px-4 py-3 space-y-2">
-          <div className="flex justify-end mb-2">
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={copyAll}>
-              <Copy className="w-3 h-3 mr-1" /> Copy All
+        <div className="border-t border-border/40 bg-secondary/20 px-4 pt-3 pb-4">
+          <div className="flex justify-end mb-3">
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={copyAll}>
+              <Copy className="w-3 h-3 mr-1" strokeWidth={1.5} /> Copy all
             </Button>
           </div>
 
-          {/* Photos */}
           {Array.isArray(data.photos) && data.photos.length > 0 && (
             <PhotoGallery
               photos={data.photos as { name: string; url: string; size?: number }[]}
@@ -381,50 +352,52 @@ function SubmissionRow({ submission }: { submission: Submission }) {
             />
           )}
 
-          {FIELD_ORDER.map((key) => {
-            if (key === "photos") return null;
-            const value = data[key];
-            if (!value) return null;
-            const isLong = typeof value === "string" && value.length > 80;
-            const isColor = key === "brand_color" && typeof value === "string" && value.startsWith("#");
-            return (
-              <div
-                key={key}
-                className="group grid grid-cols-[140px_1fr_auto] gap-2 items-start py-1.5 border-b border-border/50 last:border-0"
-              >
-                <span className="text-xs font-medium text-muted-foreground pt-0.5">
-                  {FIELD_LABELS[key] || key}
-                </span>
-                <div className={`text-sm ${isLong ? "whitespace-pre-wrap break-words" : "truncate"}`}>
-                  {isColor ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className="inline-block w-4 h-4 rounded border border-border"
-                        style={{ backgroundColor: value }}
-                      />
-                      <code className="text-xs">{value}</code>
-                    </span>
-                  ) : (
-                    value
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    copyField(String(value), FIELD_LABELS[key] || key);
-                  }}
-                  title={`Copy ${FIELD_LABELS[key] || key}`}
+          <dl className="space-y-0">
+            {FIELD_ORDER.map((key) => {
+              if (key === "photos") return null;
+              const value = data[key];
+              if (!value) return null;
+              const isLong = typeof value === "string" && value.length > 80;
+              const isColor = key === "brand_color" && typeof value === "string" && value.startsWith("#");
+              return (
+                <div
+                  key={key}
+                  className="group grid grid-cols-[140px_1fr_auto] gap-2 items-start py-2 border-b border-border/30 last:border-0"
                 >
-                  <Copy className="w-3 h-3" />
-                </Button>
-              </div>
-            );
-          })}
+                  <dt className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground pt-0.5">
+                    {FIELD_LABELS[key] || key}
+                  </dt>
+                  <dd className={`text-sm text-foreground/90 ${isLong ? "whitespace-pre-wrap break-words" : "truncate"}`}>
+                    {isColor ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="inline-block w-4 h-4 rounded border border-border/60"
+                          style={{ backgroundColor: value }}
+                        />
+                        <code className="text-xs">{value}</code>
+                      </span>
+                    ) : (
+                      value
+                    )}
+                  </dd>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      copyField(String(value), FIELD_LABELS[key] || key);
+                    }}
+                    title={`Copy ${FIELD_LABELS[key] || key}`}
+                  >
+                    <Copy className="w-3 h-3" strokeWidth={1.5} />
+                  </Button>
+                </div>
+              );
+            })}
+          </dl>
         </div>
       )}
-    </Card>
+    </li>
   );
 }

@@ -11,6 +11,12 @@ type Tab = "outreach" | "sales" | "onboarding";
 
 const VALID_TABS: Tab[] = ["outreach", "sales", "onboarding"];
 
+const TAB_LABELS: Record<Tab, string> = {
+  outreach: "Outreach",
+  sales: "Sales",
+  onboarding: "Onboarding",
+};
+
 export default function PipelinePage() {
   const { tab: urlTab } = useParams<{ tab?: string }>();
   const initialTab = VALID_TABS.includes(urlTab as Tab) ? (urlTab as Tab) : "outreach";
@@ -21,39 +27,40 @@ export default function PipelinePage() {
   const { data: salesContacts = [], isLoading: salesLoading } = useContacts("Sales");
   const { data: onboardingContacts = [], isLoading: onboardingLoading } = useContacts("Onboarding");
 
-  const tabBtn = (key: Tab, label: string) => (
-    <button
-      onClick={() => setTab(key)}
-      className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${
-        tab === key
-          ? "bg-background border border-b-background border-border text-foreground -mb-px"
-          : "text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex shrink-0 border-b border-border px-4 pt-3 gap-1">
-        {tabBtn("outreach", "Outreach")}
-        {tabBtn("sales", "Sales")}
-        {tabBtn("onboarding", "Onboarding")}
+      <div className="flex shrink-0 px-4 md:px-6 pt-6">
+        <div role="tablist" className="inline-flex items-center bg-secondary/60 rounded-full p-0.5">
+          {VALID_TABS.map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
+                tab === t
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 min-h-0">
         {tab === "outreach" && (
-          <div className="p-4 md:p-6 h-full flex flex-col animate-fade-in overflow-hidden">
-            <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="px-4 md:px-6 pt-4 pb-4 h-full flex flex-col animate-fade-in overflow-hidden">
+            <div className="flex items-center justify-between gap-4 mb-5">
               <div>
-                <h1 className="text-2xl font-display font-bold">SMS Outreach</h1>
-                <p className="text-sm text-muted-foreground">
+                <h1 className="font-serif text-3xl text-foreground">SMS Outreach</h1>
+                <p className="text-sm text-muted-foreground mt-1">
                   {outreachContacts.length} contact{outreachContacts.length === 1 ? "" : "s"} in the outreach pipeline
                 </p>
               </div>
               <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <Upload className="w-4 h-4 mr-1" /> Import CSV
+                <Upload className="w-4 h-4 mr-1.5" strokeWidth={1.5} /> Import CSV
               </Button>
             </div>
             <OutreachBoard contacts={outreachContacts} isLoading={outreachLoading} />

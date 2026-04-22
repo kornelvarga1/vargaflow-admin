@@ -1,18 +1,15 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { invokeFunction } from "@/lib/invokeFunction";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { useUpdateContact, SALES_STAGES, ONBOARDING_STAGES, type Contact } from "@/hooks/useContacts";
-import { useStopContactSequences } from "@/hooks/useSequences";
 import { logActivity } from "@/hooks/useActivityLog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -21,17 +18,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
-  Mail,
   Phone,
   User,
-  Building,
   MessageSquare,
   ArrowRightLeft,
   Pause,
   Pencil,
   XCircle,
   Send,
-  Clock,
   Zap,
   Activity,
   Loader2,
@@ -40,6 +34,7 @@ import {
 import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
+import { getInitials, getAvatarTone } from "@/lib/initials";
 
 const ALL_STAGES = [
   ...SALES_STAGES.map((s) => ({ ...s, pipeline: "Sales" as const })),
@@ -49,6 +44,17 @@ const ALL_STAGES = [
 function getStageLabel(key: string, pipeline?: string) {
   const match = ALL_STAGES.find((s) => s.key === key && (!pipeline || s.pipeline === pipeline));
   return match?.label || key;
+}
+
+function formatActivityTime(iso: string): { display: string; full: string } {
+  const date = new Date(iso);
+  const ageDays = (Date.now() - date.getTime()) / 86_400_000;
+  const display =
+    ageDays < 7
+      ? formatDistanceToNow(date, { addSuffix: true })
+      : format(date, "MMM d");
+  const full = format(date, "MMM d, yyyy · h:mm a");
+  return { display, full };
 }
 
 // --- Hooks ---
@@ -110,7 +116,6 @@ function useContactActiveSequences(contactId: string) {
         .order("started_at", { ascending: false });
       if (error) throw error;
 
-      // Get step counts
       const seqIds = [...new Set((data || []).map((d: any) => d.sequence_id))];
       const stepCounts: Record<string, number> = {};
       if (seqIds.length > 0) {
@@ -133,22 +138,23 @@ function useContactActiveSequences(contactId: string) {
   });
 }
 
-// --- Activity icon/color mapping ---
+// --- Activity icon mapping ---
 
 function getActivityIcon(type: string) {
+  const cls = "w-4 h-4 text-muted-foreground";
   switch (type) {
     case "stage_changed":
-      return <ArrowRightLeft className="w-4 h-4 text-primary" />;
+      return <ArrowRightLeft className={cls} strokeWidth={1.5} />;
     case "message_sent":
-      return <Send className="w-4 h-4 text-primary" />;
+      return <Send className={cls} strokeWidth={1.5} />;
     case "contact_created":
-      return <User className="w-4 h-4 text-accent-foreground" />;
+      return <User className={cls} strokeWidth={1.5} />;
     case "marked_replied":
-      return <MessageSquare className="w-4 h-4 text-primary" />;
+      return <MessageSquare className={cls} strokeWidth={1.5} />;
     case "sequence_enrolled":
-      return <Zap className="w-4 h-4 text-primary" />;
+      return <Zap className={cls} strokeWidth={1.5} />;
     default:
-      return <Activity className="w-4 h-4 text-muted-foreground" />;
+      return <Activity className={cls} strokeWidth={1.5} />;
   }
 }
 
@@ -161,8 +167,6 @@ export default function ContactProfilePage() {
   const { data: activities = [] } = useContactActivity(id!);
   const { data: messages = [] } = useContactMessages(id!);
   const { data: sequences = [] } = useContactActiveSequences(id!);
-  const updateContact = useUpdateContact();
-  const stopSequences = useStopContactSequences();
   const qc = useQueryClient();
 
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
@@ -188,9 +192,13 @@ export default function ContactProfilePage() {
 
   const stageLabel = getStageLabel(contact.stage, contact.pipeline);
   const pipelineLabel = contact.pipeline === "Onboarding" ? "Onboarding" : "Sales";
-  const activeSeqs = sequences.filter((s: any) => s.status === "active");
+  const heroName = contact.full_name.trim();
+  const heroIsPhone = !heroName || /^[+\d]/.test(heroName);
+  const heroMeta: string[] = [];
+  if (contact.phone) heroMeta.push(contact.phone);
+  if (contact.email) heroMeta.push(contact.email);
+  if (contact.lead_source) heroMeta.push(contact.lead_source);
 
-  // Merge activities and sent messages into a unified timeline
   const timeline = [
     ...activities.map((a: any) => ({
       id: a.id,
@@ -228,14 +236,11 @@ export default function ContactProfilePage() {
       .update({ status: "stopped" })
       .eq("id", csId);
     if (error) { toast.error("Failed to cancel"); return; }
-    // Cancel messages linked to this specific sequence
     await supabase
       .from("message_queue")
       .update({ status: "cancelled" })
       .eq("contact_sequence_id", csId)
       .eq("status", "pending");
-    // Also cancel any pending messages for this contact without a contact_sequence_id
-    // (queued by edge functions via queueSteps which don't set contact_sequence_id)
     await supabase
       .from("message_queue")
       .update({ status: "cancelled" })
@@ -248,227 +253,178 @@ export default function ContactProfilePage() {
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="space-y-1.5">
-        {/* Row 1: back + avatar + name + action icons */}
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate(-1)}>
-            <ArrowLeft className="w-5 h-5" />
+    <div className="px-4 md:px-6 pt-4 max-w-2xl mx-auto animate-fade-in">
+      {/* Top action row */}
+      <div className="flex items-center justify-between -mx-1">
+        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigate(-1)}>
+          <ArrowLeft className="w-5 h-5" strokeWidth={1.5} />
+        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Edit contact" onClick={() => setEditOpen(true)}>
+            <Pencil className="w-4 h-4" strokeWidth={1.5} />
           </Button>
-          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-            {(() => {
-              const name = contact.full_name.trim();
-              const isPhone = !name || /^[+\d]/.test(name);
-              return isPhone ? (
-                <Phone className="w-4 h-4 text-primary" />
-              ) : (
-                <span className="text-sm font-display font-bold text-primary">
-                  {name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                </span>
-              );
-            })()}
-          </div>
-          <h1 className="text-xl font-display font-bold truncate flex-1">{contact.full_name}</h1>
-          <Button
-            variant="outline"
-            size="icon"
-            className="shrink-0"
-            title="Edit contact"
-            onClick={() => setEditOpen(true)}
-          >
-            <Pencil className="w-4 h-4" />
+          <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Messages" onClick={() => navigate("/messages", { state: { contactId: contact.id } })}>
+            <MessageSquare className="w-4 h-4" strokeWidth={1.5} />
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="shrink-0"
-            title="Messages"
-            onClick={() => navigate("/messages", { state: { contactId: contact.id } })}
-          >
-            <MessageSquare className="w-4 h-4" />
+          <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Move stage" onClick={() => setMoveDialogOpen(true)}>
+            <ArrowRightLeft className="w-4 h-4" strokeWidth={1.5} />
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="shrink-0"
-            title="Move Stage"
-            onClick={() => setMoveDialogOpen(true)}
-          >
-            <ArrowRightLeft className="w-4 h-4" />
-          </Button>
-        </div>
-        {/* Row 2: pipeline + stage badges */}
-        <div className="flex items-center gap-2 pl-1 flex-wrap">
-          <Badge variant="outline" className="border-primary/40 text-primary">
-            {pipelineLabel}
-          </Badge>
-          <Badge variant="secondary">{stageLabel}</Badge>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: info + sequences */}
-        <div className="space-y-4">
-          {/* Contact Info Card */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display">Contact Info</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {contact.phone && (
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span>{contact.phone}</span>
-                </div>
-              )}
-              {contact.email && (
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
-                  <span className="truncate">{contact.email}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <Building className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground">{contact.lead_source}</span>
-              </div>
-              <Separator />
-              <div className="text-xs text-muted-foreground">
-                Added {formatDistanceToNow(new Date(contact.created_at), { addSuffix: true })}
-              </div>
-              {contact.notes && (
-                <p className="text-xs text-muted-foreground bg-secondary/50 p-2 rounded">{contact.notes}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Active Sequences Card */}
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary" /> Active Sequences
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sequences.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No sequences assigned.</p>
-              ) : (
-                <div className="space-y-3">
-                  {sequences.map((seq: any) => (
-                    <div key={seq.id} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium truncate">{seq.sequences?.name || "Unknown"}</p>
-                        <Badge
-                          variant={
-                            seq.status === "active" ? "default" :
-                            seq.status === "completed" ? "outline" : "secondary"
-                          }
-                          className="text-[10px]"
-                        >
-                          {seq.status}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Step {seq.current_step} of {seq.step_count}
-                      </p>
-                      {seq.status === "active" && (
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={() => handlePauseSequence(seq.id)}
-                          >
-                            <Pause className="w-3 h-3 mr-1" /> Pause
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-destructive"
-                            onClick={() => handleCancelSequence(seq.id)}
-                          >
-                            <XCircle className="w-3 h-3 mr-1" /> Cancel
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Pending Messages */}
-          {pendingMessages.length > 0 && (
-            <Card className="bg-card border-border">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-display flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-muted-foreground" /> Pending Messages ({pendingMessages.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {pendingMessages.slice(0, 5).map((msg: any) => (
-                  <div key={msg.id} className="text-xs space-y-0.5 p-2 bg-secondary/30 rounded">
-                    <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="text-[10px]">{msg.message_type.toUpperCase()}</Badge>
-                      <span className="text-muted-foreground">
-                        {format(new Date(msg.scheduled_at), "MMM d, h:mm a")}
-                      </span>
-                    </div>
-                    <p className="text-muted-foreground truncate">{msg.message_content}</p>
-                  </div>
-                ))}
-                {pendingMessages.length > 5 && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    +{pendingMessages.length - 5} more
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+      {/* Hero — avatar + serif name + muted metadata + pipeline/stage badges */}
+      <header className="px-1 pt-6 pb-8">
+        <div className={`w-20 h-20 rounded-full ${heroIsPhone ? "bg-secondary" : getAvatarTone(heroName)} flex items-center justify-center mb-5`}>
+          {heroIsPhone ? (
+            <Phone className="w-7 h-7 text-muted-foreground" strokeWidth={1.5} />
+          ) : (
+            <span className="text-2xl font-medium text-white/95">
+              {getInitials(heroName)}
+            </span>
           )}
         </div>
-
-        {/* Right column: Activity Timeline */}
-        <div className="lg:col-span-2">
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-display flex items-center gap-2">
-                <Activity className="w-4 h-4 text-primary" /> Activity Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {timeline.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">
-                  No activity yet.
-                </p>
-              ) : (
-                <div className="relative">
-                  {/* Vertical line */}
-                  <div className="absolute left-[15px] top-2 bottom-2 w-px bg-border" />
-
-                  <div className="space-y-4">
-                    {timeline.map((item) => (
-                      <div key={item.id} className="flex gap-3 relative">
-                        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0 z-10">
-                          {item.icon}
-                        </div>
-                        <div className="flex-1 min-w-0 pt-1">
-                          <p className="text-sm">{item.description}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {format(new Date(item.timestamp), "MMM d, yyyy · h:mm a")}
-                            {" · "}
-                            {formatDistanceToNow(new Date(item.timestamp), { addSuffix: true })}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <h1 className="font-serif text-3xl text-foreground leading-tight">{contact.full_name}</h1>
+        {heroMeta.length > 0 && (
+          <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+            {heroMeta.join(" · ")}
+          </p>
+        )}
+        <p
+          className="text-xs text-muted-foreground/80 mt-1.5"
+          title={format(new Date(contact.created_at), "MMM d, yyyy · h:mm a")}
+        >
+          Added {formatDistanceToNow(new Date(contact.created_at), { addSuffix: true })}
+        </p>
+        <div className="flex items-center gap-2 flex-wrap mt-4">
+          <Badge variant="outline" className="text-xs border-border/60 text-muted-foreground font-normal">{pipelineLabel}</Badge>
+          <Badge variant="outline" className="text-xs border-border/60 text-muted-foreground font-normal">{stageLabel}</Badge>
         </div>
-      </div>
+      </header>
+
+      {/* Notes — whole card tappable */}
+      <button
+        onClick={() => setEditOpen(true)}
+        className="w-full text-left bg-card border border-border/60 rounded-2xl p-4 hover:bg-secondary/30 transition-colors active-press"
+      >
+        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground mb-2">Notes</p>
+        {contact.notes ? (
+          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{contact.notes}</p>
+        ) : (
+          <p className="text-sm text-muted-foreground">Add a note…</p>
+        )}
+      </button>
+
+      {/* Active Sequences */}
+      {sequences.length > 0 && (
+        <section className="mt-6">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-1 mb-3">
+            Active Sequences
+          </p>
+          <ul className="bg-card border border-border/60 rounded-2xl divide-y divide-border/40 overflow-hidden">
+            {sequences.map((seq: any) => (
+              <li key={seq.id} className="px-4 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-foreground truncate">{seq.sequences?.name || "Unknown"}</p>
+                  <Badge variant="outline" className="text-[10px] border-border/60 text-muted-foreground font-normal shrink-0">
+                    {seq.status}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Step {seq.current_step} of {seq.step_count}
+                </p>
+                {seq.status === "active" && (
+                  <div className="flex gap-1 mt-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => handlePauseSequence(seq.id)}
+                    >
+                      <Pause className="w-3 h-3 mr-1" strokeWidth={1.5} /> Pause
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-destructive hover:text-destructive"
+                      onClick={() => handleCancelSequence(seq.id)}
+                    >
+                      <XCircle className="w-3 h-3 mr-1" strokeWidth={1.5} /> Cancel
+                    </Button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Pending Messages */}
+      {pendingMessages.length > 0 && (
+        <section className="mt-6">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-1 mb-3">
+            Pending ({pendingMessages.length})
+          </p>
+          <div className="bg-card border border-border/60 rounded-2xl p-4 space-y-2">
+            {pendingMessages.slice(0, 5).map((msg: any) => (
+              <div key={msg.id} className="text-xs space-y-1 py-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge variant="outline" className="text-[10px] border-border/60 text-muted-foreground font-normal">
+                    {msg.message_type.toUpperCase()}
+                  </Badge>
+                  <span className="text-muted-foreground">
+                    {format(new Date(msg.scheduled_at), "MMM d, h:mm a")}
+                  </span>
+                </div>
+                <p className="text-muted-foreground truncate">{msg.message_content}</p>
+              </div>
+            ))}
+            {pendingMessages.length > 5 && (
+              <p className="text-xs text-muted-foreground text-center pt-1">
+                +{pendingMessages.length - 5} more
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Activity Timeline */}
+      <section className="mt-8">
+        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-1 mb-4">
+          Activity
+        </p>
+        {timeline.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No activity yet.
+          </p>
+        ) : (
+          <div className="relative pl-1">
+            <div className="absolute left-[10px] top-1.5 bottom-1.5 w-px bg-border/60" />
+            <ul className="space-y-2">
+              {timeline.map((item) => {
+                const t = formatActivityTime(item.timestamp);
+                return (
+                  <li key={item.id} className="flex gap-3 relative">
+                    <div className="w-5 h-5 flex items-center justify-center shrink-0 z-10 bg-background mt-0.5">
+                      {item.icon}
+                    </div>
+                    <div className="flex-1 min-w-0 pb-1.5">
+                      <p className="text-sm text-foreground/90">{item.description}</p>
+                      <p
+                        className="text-xs text-muted-foreground mt-0.5"
+                        title={t.full}
+                      >
+                        {t.display}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      <div className="h-12" />
 
       {/* Dialogs */}
       <ContactFormDialog
@@ -541,7 +497,6 @@ function MoveStageDialog({
       await logActivity("stage_changed", `moved to ${label}`, contact.id);
       toast.success(isClientClosed ? `${contact.full_name} → Onboarding` : `Moved to ${label}`);
 
-      // Trigger edge function if one exists for this stage
       const flowName = STAGE_FLOW_MAP[effectiveStage];
       if (flowName) {
         try {
@@ -568,7 +523,7 @@ function MoveStageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="font-display">Move to Stage</DialogTitle>
+          <DialogTitle>Move to Stage</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <Select value={selectedStage} onValueChange={setSelectedStage}>
@@ -591,7 +546,7 @@ function MoveStageDialog({
   );
 }
 
-// --- Send SMS Dialog (copy-to-clipboard for now) ---
+// --- Send SMS Dialog ---
 
 function SendSmsDialog({
   open,
@@ -611,7 +566,6 @@ function SendSmsDialog({
       return;
     }
 
-    // Queue the message and copy to clipboard
     const { error } = await supabase.from("message_queue").insert({
       contact_id: contact.id,
       message_content: message,
@@ -643,12 +597,12 @@ function SendSmsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="font-display">Send SMS to {contact.full_name}</DialogTitle>
+          <DialogTitle>Send SMS to {contact.full_name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {contact.phone && (
             <p className="text-sm text-muted-foreground flex items-center gap-2">
-              <Phone className="w-4 h-4" /> {contact.phone}
+              <Phone className="w-4 h-4" strokeWidth={1.5} /> {contact.phone}
             </p>
           )}
           <Textarea
@@ -660,7 +614,7 @@ function SendSmsDialog({
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button onClick={handleSend}>
-              <Copy className="w-4 h-4 mr-1" /> Queue & Copy
+              <Copy className="w-4 h-4 mr-1" strokeWidth={1.5} /> Queue & Copy
             </Button>
           </div>
         </div>

@@ -111,7 +111,7 @@ export default function ContactFormDialog({ open, onOpenChange, contact, default
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-card border-border">
         <DialogHeader>
-          <DialogTitle className="font-display">{isEdit ? "Edit Contact" : "Add Contact"}</DialogTitle>
+          <DialogTitle>{isEdit ? "Edit Contact" : "Add Contact"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

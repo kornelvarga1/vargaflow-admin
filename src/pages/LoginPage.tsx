@@ -4,8 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2 } from "lucide-react";
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,64 +32,61 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm space-y-6">
+      <div className="w-full max-w-sm space-y-8">
         <div className="flex flex-col items-center gap-3">
           <img src="/favicon.png" alt="VargaFlow Admin" className="w-12 h-12 rounded-xl" />
-          <h1 className="text-2xl font-display font-bold text-primary">VargaFlow Admin</h1>
+          <div className="text-center">
+            <h1 className="font-serif text-3xl text-foreground">VargaFlow Admin</h1>
+            <p className="text-sm text-muted-foreground mt-1">Sign in to your account</p>
+          </div>
         </div>
 
-        <Card className="bg-card border-border shadow-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-display text-center">Sign in</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-sm text-muted-foreground">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  autoFocus
-                  className="bg-secondary border-border"
-                />
-              </div>
+        {error && (
+          <div className="rounded-2xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive text-center">
+            {error}
+          </div>
+        )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-sm text-muted-foreground">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="bg-secondary border-border"
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoFocus
+              className="bg-input"
+            />
+          </div>
 
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
+          <div className="space-y-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="bg-input"
+            />
+          </div>
 
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full gradient-primary text-primary-foreground"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <LogIn className="w-4 h-4 mr-2" />
-                )}
-                Sign in
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+          <Button
+            type="submit"
+            disabled={loading}
+            className="w-full"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+            ) : (
+              "Sign in"
+            )}
+          </Button>
+        </form>
       </div>
     </div>
   );

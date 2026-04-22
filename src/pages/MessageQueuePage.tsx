@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabase";
 import { invokeFunction } from "@/lib/invokeFunction";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { useCustomValues, replaceCustomValues } from "@/hooks/useCustomValues";
-import { logActivity } from "@/hooks/useActivityLog";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
 import { useConversationOpen } from "@/context/ConversationContext";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +16,12 @@ import {
   Loader2,
   Search,
   ArrowLeft,
-  ArrowRight,
   Zap,
   Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
+import { getInitials, getAvatarTone } from "@/lib/initials";
 
 const ALL_STAGES = [
   ...SALES_STAGES.map((s) => ({ ...s, pipeline: "Sales" })),
@@ -220,12 +219,10 @@ export default function MessageQueuePage() {
     return () => setConversationOpen(false);
   }, [selectedContactId, setConversationOpen]);
 
-  // Clear optimistic messages when switching contacts
   useEffect(() => {
     setOptimisticMessages([]);
   }, [selectedContactId]);
 
-  // Prune optimistic messages whose real counterpart has arrived
   useEffect(() => {
     if (optimisticMessages.length === 0 || messages.length === 0) return;
     setOptimisticMessages((prev) =>
@@ -274,7 +271,6 @@ export default function MessageQueuePage() {
     }
   }, [allMessages]);
 
-  // Auto-select first contact on desktop only
   useEffect(() => {
     if (!selectedContactId && contacts.length > 0 && window.innerWidth >= 768) {
       setSelectedContactId(contacts[0].id);
@@ -287,39 +283,38 @@ export default function MessageQueuePage() {
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden animate-fade-in">
       {/* Left Panel: Contact List */}
-      <div className={`flex flex-col border-border shrink-0 w-full md:w-80 lg:w-96 md:border-r ${selectedContactId ? "hidden md:flex" : "flex"}`}>
+      <div className={`flex flex-col border-border/40 shrink-0 w-full md:w-80 lg:w-96 md:border-r ${selectedContactId ? "hidden md:flex" : "flex"}`}>
 
-        {/* Mobile header */}
-        <div className="px-4 py-3 border-b border-border shrink-0 md:hidden">
-          <h1 className="text-xl font-display font-bold flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-primary" />
-            Messages
-          </h1>
-        </div>
-
-        {/* Search + Filter */}
-        <div className="px-4 py-3 space-y-2 border-b border-border shrink-0">
+        {/* Header: title + segmented control inline, search below */}
+        <div className="px-4 pt-8 pb-3 shrink-0">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <h1 className="font-serif text-3xl text-foreground">Messages</h1>
+            <div role="tablist" className="inline-flex items-center bg-secondary/60 rounded-full p-0.5">
+              {(["all", "unread"] as FilterType[]).map((f) => (
+                <button
+                  key={f}
+                  role="tab"
+                  aria-selected={filter === f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                    filter === f
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {f === "all" ? "All" : "Unread"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
             <Input
-              placeholder="Search contacts..."
+              placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-10 text-base"
+              className="pl-9 h-10 text-base bg-secondary/40 border-0 focus-visible:ring-1 focus-visible:ring-ring/50"
             />
-          </div>
-          <div className="flex gap-1">
-            {(["all", "unread"] as FilterType[]).map((f) => (
-              <Button
-                key={f}
-                variant={filter === f ? "default" : "ghost"}
-                size="sm"
-                className="h-8 text-sm flex-1"
-                onClick={() => setFilter(f)}
-              >
-                {f === "all" ? "All" : "Unread"}
-              </Button>
-            ))}
           </div>
         </div>
 
@@ -337,54 +332,52 @@ export default function MessageQueuePage() {
             </div>
           ) : (
             <div className="pb-4">
-              {filteredContacts.map((c) => (
-                <button
-                  key={c.id}
-                  className={`w-full text-left px-4 py-4 flex items-center gap-3 overflow-x-hidden hover:bg-secondary/50 active:bg-secondary transition-colors border-b border-border/50 ${
-                    selectedContactId === c.id ? "bg-secondary" : ""
-                  }`}
-                  onClick={() => selectContact(c.id)}
-                >
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    {(() => {
-                      const name = c.full_name.trim();
-                      const isPhone = !name || /^[+\d]/.test(name);
-                      return isPhone ? (
-                        <Phone className="w-5 h-5 text-primary" />
+              {filteredContacts.map((c) => {
+                const name = c.full_name.trim();
+                const isPhone = !name || /^[+\d]/.test(name);
+                const isUnread = c.hasUnread && !seenIds.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 overflow-x-hidden hover:bg-secondary/40 active:bg-secondary transition-colors ${
+                      selectedContactId === c.id ? "bg-secondary/60" : ""
+                    }`}
+                    onClick={() => selectContact(c.id)}
+                  >
+                    <div className={`w-11 h-11 rounded-full ${isPhone ? "bg-secondary" : getAvatarTone(name)} flex items-center justify-center shrink-0`}>
+                      {isPhone ? (
+                        <Phone className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
                       ) : (
-                        <span className="text-sm font-display font-bold text-primary">
-                          {name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                        <span className="text-sm font-medium text-white/95">
+                          {getInitials(name)}
                         </span>
-                      );
-                    })()}
-                  </div>
-                  <div className="flex-1 min-w-0 overflow-hidden max-w-full">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className={`text-base min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${c.hasUnread && !seenIds.has(c.id) ? "font-bold" : "font-semibold"}`}>
-                        {c.full_name}
-                      </p>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatDistanceToNow(new Date(c.lastMessageAt), { addSuffix: false })}
-                      </span>
+                      )}
                     </div>
-                    <p className={`text-sm min-w-0 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5 ${c.hasUnread && !seenIds.has(c.id) ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                      {c.lastMessage}
-                    </p>
-                  </div>
-                  {c.hasUnread && !seenIds.has(c.id) && (
-                    <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
-                  )}
-                </button>
-              ))}
+                    <div className="flex-1 min-w-0 overflow-hidden max-w-full">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className={`text-[15px] min-w-0 overflow-hidden text-ellipsis whitespace-nowrap ${isUnread ? "font-semibold text-foreground" : "font-medium text-foreground"}`}>
+                          {c.full_name}
+                        </p>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {formatDistanceToNow(new Date(c.lastMessageAt), { addSuffix: false })}
+                        </span>
+                      </div>
+                      <p className={`text-sm min-w-0 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5 ${isUnread ? "text-foreground/90" : "text-muted-foreground"}`}>
+                        {c.lastMessage}
+                      </p>
+                    </div>
+                    {isUnread && (
+                      <div className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* Right Panel: Conversation
-          Mobile open:   fixed full-screen overlay above everything
-          Mobile closed: hidden
-          Desktop:       flex-1, sits beside the left panel */}
+      {/* Right Panel: Conversation */}
       <div className={
         selectedContactId
           ? "fixed inset-x-0 top-0 h-dvh flex flex-col overflow-hidden bg-background z-20 md:static md:flex-1 md:h-auto md:inset-auto md:z-auto"
@@ -393,72 +386,70 @@ export default function MessageQueuePage() {
         {!selectedContactId ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-base">
             <div className="text-center">
-              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" strokeWidth={1.5} />
               <p>Select a contact to view conversation</p>
             </div>
           </div>
         ) : (
           <>
             {/* Conversation Header */}
-            {selectedContact && (
-              <div className="sticky top-0 z-10 px-3 py-2.5 border-b border-border bg-secondary/20 space-y-1.5 shrink-0">
-                {/* Row 1: back + avatar + name + call + profile */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="md:hidden shrink-0 -ml-1 h-9 w-9"
-                    onClick={() => setSelectedContactId(null)}
-                  >
-                    <ArrowLeft className="w-5 h-5" />
-                  </Button>
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    {(() => {
-                      const name = selectedContact.full_name.trim();
-                      const isPhone = !name || /^[+\d]/.test(name);
-                      return isPhone ? (
-                        <Phone className="w-4 h-4 text-primary" />
-                      ) : (
-                        <span className="text-xs font-display font-bold text-primary">
-                          {name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <p className="font-display font-semibold text-base flex-1 truncate">{selectedContact.full_name}</p>
-                  {selectedContact.phone && (
-                    <a href={`tel:${selectedContact.phone}`} className="shrink-0">
-                      <Button variant="ghost" size="icon" className="h-9 w-9">
-                        <Phone className="w-4 h-4" />
-                      </Button>
-                    </a>
-                  )}
-                  <Link to={`/contacts/${selectedContact.id}`} className="shrink-0">
-                    <Button variant="ghost" size="icon" className="h-9 w-9">
-                      <ArrowRight className="w-4 h-4" />
+            {selectedContact && (() => {
+              const headerName = selectedContact.full_name.trim();
+              const headerIsPhone = !headerName || /^[+\d]/.test(headerName);
+              return (
+                <div className="sticky top-0 z-10 px-3 py-2.5 border-b border-border/40 bg-background/95 backdrop-blur space-y-1.5 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="md:hidden shrink-0 -ml-1 h-9 w-9"
+                      onClick={() => setSelectedContactId(null)}
+                    >
+                      <ArrowLeft className="w-5 h-5" strokeWidth={1.5} />
                     </Button>
-                  </Link>
-                </div>
-                {/* Row 2: badges */}
-                <div className="flex items-center gap-1.5 flex-wrap pl-1">
-                  <Badge variant="outline" className="text-xs border-primary/40 text-primary">
-                    {selectedContact.pipeline === "Onboarding" ? "Onboarding" : "Sales"}
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    {stageLabel(selectedContact.stage, selectedContact.pipeline)}
-                  </Badge>
-                  {activeSeq && (
-                    <Badge variant="default" className="text-xs">
-                      <Zap className="w-3 h-3 mr-0.5" />
-                      {(activeSeq as any).sequences?.name || "Sequence"} — Step {activeSeq.current_step}
+                    <Link
+                      to={`/contacts/${selectedContact.id}`}
+                      className="flex items-center gap-2 flex-1 min-w-0 px-1 py-1 rounded-lg hover:bg-secondary/40 transition-colors"
+                    >
+                      <div className={`w-9 h-9 rounded-full ${headerIsPhone ? "bg-secondary" : getAvatarTone(headerName)} flex items-center justify-center shrink-0`}>
+                        {headerIsPhone ? (
+                          <Phone className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+                        ) : (
+                          <span className="text-xs font-medium text-white/95">
+                            {getInitials(headerName)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-semibold text-[15px] flex-1 truncate text-foreground">{selectedContact.full_name}</p>
+                    </Link>
+                    {selectedContact.phone && (
+                      <a href={`tel:${selectedContact.phone}`} className="shrink-0">
+                        <Button variant="ghost" size="icon" className="h-9 w-9">
+                          <Phone className="w-4 h-4" strokeWidth={1.5} />
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap pl-1">
+                    <Badge variant="outline" className="text-xs border-border/60 text-muted-foreground font-normal">
+                      {selectedContact.pipeline === "Onboarding" ? "Onboarding" : "Sales"}
                     </Badge>
-                  )}
+                    <Badge variant="outline" className="text-xs border-border/60 text-muted-foreground font-normal">
+                      {stageLabel(selectedContact.stage, selectedContact.pipeline)}
+                    </Badge>
+                    {activeSeq && (
+                      <Badge variant="outline" className="text-xs gap-1 border-border/60 text-muted-foreground font-normal">
+                        <Zap className="w-3 h-3 text-primary" strokeWidth={1.5} />
+                        {(activeSeq as any).sequences?.name || "Sequence"} — Step {activeSeq.current_step}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
-            {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-2">
+            {/* Messages — with timestamp clusters at > 5min gaps */}
+            <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 space-y-1.5">
               {msgsLoading ? (
                 <div className="flex justify-center py-12">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -468,7 +459,26 @@ export default function MessageQueuePage() {
                   No messages yet.
                 </div>
               ) : (
-                allMessages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
+                (() => {
+                  const elements: React.ReactNode[] = [];
+                  let lastTime: number | null = null;
+                  for (const msg of allMessages) {
+                    const t = new Date(msg.sent_at || msg.scheduled_at).getTime();
+                    if (lastTime === null || t - lastTime > 5 * 60 * 1000) {
+                      elements.push(
+                        <div
+                          key={`sep-${msg.id}`}
+                          className="text-center text-[11px] text-muted-foreground py-2 select-none"
+                        >
+                          {format(new Date(t), "MMM d · h:mm a")}
+                        </div>
+                      );
+                    }
+                    elements.push(<MessageBubble key={msg.id} message={msg} />);
+                    lastTime = t;
+                  }
+                  return elements;
+                })()
               )}
             </div>
 
@@ -521,33 +531,26 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[82%] rounded-3xl px-4 py-3 ${
+        className={`max-w-[72%] rounded-3xl px-3.5 py-2.5 ${
           isOutbound
-            ? "bg-primary text-primary-foreground rounded-br-lg"
+            ? "bg-secondary text-foreground rounded-br-lg"
             : "bg-[var(--bubble-in-bg)] text-[var(--bubble-in-text)] rounded-bl-lg"
         } ${isCancelled ? "opacity-50 line-through" : ""} ${isPending && isOutbound ? "opacity-60" : ""}`}
+        title={format(new Date(message.sent_at || message.scheduled_at), "MMM d, yyyy · h:mm a")}
       >
-        <p className="text-base leading-relaxed whitespace-pre-wrap">
+        <p className="text-[15px] leading-[1.45] whitespace-pre-wrap">
           {renderMessageContent(
             message.message_content,
-            isOutbound
-              ? "underline underline-offset-2 opacity-80"
-              : "underline underline-offset-2 text-primary"
+            "underline underline-offset-2 text-primary"
           )}
         </p>
-        <div className={`flex items-center gap-1.5 mt-1.5 ${
-          isOutbound ? "text-primary-foreground/60" : "text-muted-foreground"
-        }`}>
-          <span className="text-xs">
-            {format(new Date(message.sent_at || message.scheduled_at), "MMM d, h:mm a")}
-          </span>
-          {isPending && (
-            <Badge variant="outline" className="text-[10px] h-4 border-primary-foreground/30 text-primary-foreground/60">
+        {isPending && (
+          <div className="flex items-center mt-1">
+            <Badge variant="outline" className="text-[10px] h-4 border-border/60 text-muted-foreground font-normal">
               Pending
             </Badge>
-          )}
-          {message.status === "sent" && <span className="text-xs">✓</span>}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -630,7 +633,7 @@ function ComposeBar({
   };
 
   return (
-    <div className="px-3 py-3 border-t border-border bg-card shrink-0">
+    <div className="px-3 py-3 border-t border-border/40 bg-background shrink-0">
       <div className="flex items-end gap-2">
         <textarea
           value={text}
@@ -653,9 +656,9 @@ function ComposeBar({
           size="icon"
         >
           {sending ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Loader2 className="w-5 h-5 animate-spin" strokeWidth={1.5} />
           ) : (
-            <Send className="w-5 h-5" />
+            <Send className="w-5 h-5" strokeWidth={1.5} />
           )}
         </Button>
       </div>

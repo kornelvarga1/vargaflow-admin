@@ -1,40 +1,78 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
-import { Bell, Check, Loader2, Moon, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Check, LogOut, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { useDarkMode } from "@/hooks/useDarkMode";
 import { requestNotificationPermission, getNotificationPermissionState } from "@/hooks/usePushNotifications";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 
-// ---- My Settings Tab ----
+// ---- Settings field groups ----
 
-const SETTINGS_FIELDS: { key: string; label: string }[] = [
-  { key: "my_name", label: "My Name" },
-  { key: "my_phone", label: "My Phone" },
-  { key: "my_email", label: "My Email" },
-  { key: "company_name", label: "Company Name" },
-  { key: "website_url", label: "Website URL" },
-  { key: "twilio_phone_number", label: "Twilio Phone Number" },
-  { key: "gmb_review_link", label: "GMB Review Link" },
-  { key: "quote_form_link", label: "Quote Form Link" },
-  { key: "marketing_form_link", label: "Marketing Form Link" },
-  { key: "brand_color", label: "Brand Color" },
-  { key: "instagram_url", label: "Instagram URL" },
-  { key: "software_explanation_video", label: "Software Explanation Video" },
-  { key: "testimonials_link", label: "Testimonials Link" },
-  { key: "case_study_link", label: "Case Study Link" },
-  { key: "demo_calendar_link", label: "Demo Calendar Link" },
-  { key: "launch_call_calendar_link", label: "Launch Call Calendar Link" },
-  { key: "onboarding_form_link", label: "Onboarding Form Link" },
+type FieldGroup = {
+  label: string;
+  fields: { key: string; label: string }[];
+};
+
+const FIELD_GROUPS: FieldGroup[] = [
+  {
+    label: "Identity",
+    fields: [
+      { key: "my_name", label: "My Name" },
+      { key: "my_phone", label: "My Phone" },
+      { key: "my_email", label: "My Email" },
+    ],
+  },
+  {
+    label: "Business",
+    fields: [
+      { key: "company_name", label: "Company Name" },
+      { key: "website_url", label: "Website URL" },
+      { key: "twilio_phone_number", label: "Twilio Phone Number" },
+      { key: "brand_color", label: "Brand Color" },
+      { key: "instagram_url", label: "Instagram URL" },
+    ],
+  },
+  {
+    label: "Links",
+    fields: [
+      { key: "gmb_review_link", label: "GMB Review Link" },
+      { key: "quote_form_link", label: "Quote Form Link" },
+      { key: "marketing_form_link", label: "Marketing Form Link" },
+      { key: "software_explanation_video", label: "Software Explanation Video" },
+      { key: "testimonials_link", label: "Testimonials Link" },
+      { key: "case_study_link", label: "Case Study Link" },
+      { key: "demo_calendar_link", label: "Demo Calendar Link" },
+      { key: "launch_call_calendar_link", label: "Launch Call Calendar Link" },
+      { key: "onboarding_form_link", label: "Onboarding Form Link" },
+    ],
+  },
 ];
+
+const ALL_FIELDS = FIELD_GROUPS.flatMap((g) => g.fields);
+
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-4 pb-2 pt-8">
+      {children}
+    </h2>
+  );
+}
+
+function GroupedList({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-card border border-border/60 divide-y divide-border/50 overflow-hidden">
+      {children}
+    </div>
+  );
+}
+
+// ---- Hooks ----
 
 function useMySettings() {
   return useQuery({
@@ -50,81 +88,6 @@ function useMySettings() {
     },
   });
 }
-
-function MySettingsTab() {
-  const qc = useQueryClient();
-  const { data: settings, isLoading } = useMySettings();
-  const [form, setForm] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    const vals: Record<string, string> = {};
-    SETTINGS_FIELDS.forEach(({ key }) => {
-      vals[key] = (settings as any)?.[key] ?? "";
-    });
-    setForm(vals);
-  }, [settings]);
-
-  const handleSaveAll = async () => {
-    setSaving(true);
-    try {
-      const payload: Record<string, string> = {};
-      SETTINGS_FIELDS.forEach(({ key }) => { payload[key] = form[key] ?? ""; });
-
-      const { error } = await supabase
-        .from("settings")
-        .update(payload as any)
-        .eq("business_id", ADMIN_BUSINESS_ID);
-      if (error) throw error;
-      qc.invalidateQueries({ queryKey: ["my_settings"] });
-      toast.success("Settings saved");
-    } catch {
-      toast.error("Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {SETTINGS_FIELDS.map(({ key, label }) => (
-        <div key={key} className="space-y-1.5">
-          <Label className="text-sm text-muted-foreground">{label}</Label>
-          <Input
-            value={form[key] ?? ""}
-            onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
-            placeholder={`Enter ${label.toLowerCase()}...`}
-            className="bg-secondary border-border"
-          />
-        </div>
-      ))}
-      <div className="pt-2">
-        <Button
-          onClick={handleSaveAll}
-          disabled={saving}
-          className="gradient-primary text-primary-foreground"
-        >
-          {saving ? (
-            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-          ) : (
-            <Check className="w-4 h-4 mr-1.5" />
-          )}
-          Save All
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ---- Custom Values Tab ----
 
 interface CustomValue {
   id: string;
@@ -149,12 +112,14 @@ function useAllCustomValues() {
   });
 }
 
-function CustomValuesTab() {
+// ---- Custom Values Section ----
+
+function CustomValuesSection() {
   const qc = useQueryClient();
   const { data: values, isLoading } = useAllCustomValues();
   const [localValues, setLocalValues] = useState<Record<string, string>>({});
   const [localLabels, setLocalLabels] = useState<Record<string, string>>({});
-  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, { value: string; label: string }>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [newKey, setNewKey] = useState("");
@@ -164,32 +129,30 @@ function CustomValuesTab() {
     if (values) {
       const vals: Record<string, string> = {};
       const labs: Record<string, string> = {};
+      const snap: Record<string, { value: string; label: string }> = {};
       values.forEach((v) => {
         vals[v.id] = v.value;
         labs[v.id] = v.label;
+        snap[v.id] = { value: v.value, label: v.label };
       });
       setLocalValues(vals);
       setLocalLabels(labs);
-      setDirtyIds(new Set());
+      setSavedSnapshot(snap);
     }
   }, [values]);
 
-  const markDirty = (id: string) =>
-    setDirtyIds((prev) => new Set(prev).add(id));
-
-  const handleSave = async (id: string) => {
+  const handleBlur = async (id: string) => {
+    const value = localValues[id] ?? "";
+    const label = localLabels[id] ?? "";
+    const snap = savedSnapshot[id];
+    if (snap && snap.value === value && snap.label === label) return;
     try {
       const { error } = await supabase
         .from("custom_values")
-        .update({ value: localValues[id] ?? "", label: localLabels[id] ?? "" } as any)
+        .update({ value, label } as any)
         .eq("id", id);
       if (error) throw error;
-      setDirtyIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-      qc.invalidateQueries({ queryKey: ["all_custom_values"] });
+      setSavedSnapshot((prev) => ({ ...prev, [id]: { value, label } }));
       toast.success("Saved");
     } catch {
       toast.error("Failed to save");
@@ -233,111 +196,108 @@ function CustomValuesTab() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-3">
-      {(!values || values.length === 0) && (
-        <p className="text-sm text-muted-foreground py-2">No custom values yet.</p>
-      )}
-      {(values || []).map((item) => (
-        <div key={item.id} className="flex gap-2 items-center">
-          <Input
-            value={localLabels[item.id] ?? ""}
-            onChange={(e) => {
-              setLocalLabels((prev) => ({ ...prev, [item.id]: e.target.value }));
-              markDirty(item.id);
-            }}
-            placeholder="Label"
-            className="bg-secondary border-border w-40 shrink-0 text-sm"
-          />
-          <code className="text-[10px] font-mono text-muted-foreground/60 shrink-0 hidden sm:block w-32 truncate">
-            {`{{${item.key}}}`}
-          </code>
-          <Input
-            value={localValues[item.id] ?? ""}
-            onChange={(e) => {
-              setLocalValues((prev) => ({ ...prev, [item.id]: e.target.value }));
-              markDirty(item.id);
-            }}
-            placeholder="Value"
-            className="bg-secondary border-border flex-1 text-sm"
-          />
-          {dirtyIds.has(item.id) && (
-            <Button size="icon" variant="outline" className="h-9 w-9 shrink-0" onClick={() => handleSave(item.id)}>
-              <Check className="w-3.5 h-3.5" />
-            </Button>
-          )}
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-9 w-9 shrink-0 text-destructive hover:text-destructive"
-            onClick={() => handleDelete(item.id)}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      ))}
-
-      <Separator className="my-4" />
-
-      {showAddForm ? (
-        <div className="space-y-3 p-4 border border-border rounded-lg bg-secondary/30">
-          <div className="flex gap-3">
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-sm">Label</Label>
-              <Input
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="e.g. Business Name"
-                className="bg-secondary border-border"
-              />
-            </div>
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-sm">Key</Label>
-              <Input
-                value={newKey}
-                onChange={(e) => setNewKey(e.target.value)}
-                placeholder="e.g. business_name"
-                className="bg-secondary border-border font-mono text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={handleAdd}
-              disabled={adding}
-              className="gradient-primary text-primary-foreground"
-            >
-              {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-              <span className="ml-1.5">Add</span>
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
-              Cancel
-            </Button>
-          </div>
+    <>
+      <SectionHeader>Custom Values</SectionHeader>
+      {isLoading ? (
+        <div className="flex justify-center py-6">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <Button variant="outline" size="sm" onClick={() => setShowAddForm(true)}>
-          <Plus className="w-3.5 h-3.5 mr-1.5" />
-          Add New Value
-        </Button>
+        <>
+          {(!values || values.length === 0) ? (
+            <p className="text-sm text-muted-foreground px-4">No custom values yet.</p>
+          ) : (
+            <GroupedList>
+              {values.map((item) => (
+                <div key={item.id} className="px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Input
+                      value={localLabels[item.id] ?? ""}
+                      onChange={(e) => setLocalLabels((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                      onBlur={() => handleBlur(item.id)}
+                      placeholder="Label"
+                      className="bg-transparent border-0 px-0 h-7 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm font-medium"
+                    />
+                    <code className="text-[10px] font-mono text-muted-foreground/60 shrink-0 hidden sm:block">
+                      {`{{${item.key}}}`}
+                    </code>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDelete(item.id)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+                    </Button>
+                  </div>
+                  <Input
+                    value={localValues[item.id] ?? ""}
+                    onChange={(e) => setLocalValues((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                    onBlur={() => handleBlur(item.id)}
+                    placeholder="Value"
+                    className="bg-transparent border-0 px-0 h-8 focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
+                  />
+                </div>
+              ))}
+            </GroupedList>
+          )}
+
+          <div className="mt-3">
+            {showAddForm ? (
+              <div className="rounded-2xl bg-card border border-border/60 p-4 space-y-3">
+                <div className="flex gap-3">
+                  <div className="space-y-1.5 flex-1">
+                    <Label className="text-xs text-muted-foreground">Label</Label>
+                    <Input
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      placeholder="e.g. Business Name"
+                      className="bg-secondary/40 border-0 focus-visible:ring-1 focus-visible:ring-ring/50"
+                    />
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <Label className="text-xs text-muted-foreground">Key</Label>
+                    <Input
+                      value={newKey}
+                      onChange={(e) => setNewKey(e.target.value)}
+                      placeholder="e.g. business_name"
+                      className="bg-secondary/40 border-0 focus-visible:ring-1 focus-visible:ring-ring/50 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleAdd} disabled={adding}>
+                    {adding ? <Loader2 className="w-3 h-3 mr-1 animate-spin" strokeWidth={1.5} /> : <Check className="w-3 h-3 mr-1" strokeWidth={1.5} />}
+                    Add
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setShowAddForm(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1.5" strokeWidth={1.5} />
+                Add new value
+              </Button>
+            )}
+          </div>
+        </>
       )}
-    </div>
+    </>
   );
 }
 
 // ---- Page ----
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const { isDark, toggle } = useDarkMode();
+  const { data: settings, isLoading: settingsLoading } = useMySettings();
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string>>({});
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("default");
   const [notifLoading, setNotifLoading] = useState(false);
 
@@ -345,118 +305,136 @@ export default function SettingsPage() {
     getNotificationPermissionState().then(setNotifPermission);
   }, []);
 
+  useEffect(() => {
+    const vals: Record<string, string> = {};
+    ALL_FIELDS.forEach(({ key }) => {
+      vals[key] = (settings as any)?.[key] ?? "";
+    });
+    setForm(vals);
+    setSavedSnapshot(vals);
+  }, [settings]);
+
+  const handleSettingsBlur = async (key: string) => {
+    const value = form[key] ?? "";
+    if ((savedSnapshot[key] ?? "") === value) return;
+    try {
+      const { error } = await supabase
+        .from("settings")
+        .update({ [key]: value } as any)
+        .eq("business_id", ADMIN_BUSINESS_ID);
+      if (error) throw error;
+      setSavedSnapshot((prev) => ({ ...prev, [key]: value }));
+      qc.invalidateQueries({ queryKey: ["my_settings"] });
+      toast.success("Saved");
+    } catch {
+      toast.error("Failed to save");
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  };
+
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-display font-bold">Settings</h1>
+    <div className="px-4 md:px-6 pt-8 max-w-2xl mx-auto animate-fade-in">
+      <header className="px-1 pb-2">
+        <h1 className="font-serif text-3xl text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage your personal settings and custom template variables.
+          Manage your personal settings and template variables.
         </p>
-      </div>
+      </header>
 
-      <Card className="bg-card border-border shadow-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base font-display">
-            <Moon className="w-4 h-4" />
-            Appearance
-          </CardTitle>
-        </CardHeader>
-        <Separator />
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Dark Mode</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Switch app theme</p>
-            </div>
-            <Switch
-              checked={isDark}
-              onCheckedChange={toggle}
-              className="data-[state=checked]:bg-[#D4860A]"
-            />
+      <SectionHeader>Appearance</SectionHeader>
+      <GroupedList>
+        <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+          <p className="text-sm text-foreground">Dark Mode</p>
+          <Switch checked={isDark} onCheckedChange={toggle} />
+        </div>
+      </GroupedList>
+
+      <SectionHeader>Notifications</SectionHeader>
+      <GroupedList>
+        <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-foreground">Inbound message alerts</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {notifPermission === "granted"
+                ? "Enabled on this device."
+                : notifPermission === "denied"
+                ? "Blocked — reset site permissions to re-enable."
+                : notifPermission === "unsupported"
+                ? "Not supported in this browser."
+                : "Get notified instantly when a lead replies."}
+            </p>
           </div>
-        </CardContent>
-      </Card>
+          {notifPermission !== "unsupported" && notifPermission !== "denied" && (
+            <Button
+              size="sm"
+              variant={notifPermission === "granted" ? "outline" : "default"}
+              disabled={notifLoading}
+              onClick={async () => {
+                setNotifLoading(true);
+                const ok = await requestNotificationPermission(ADMIN_BUSINESS_ID);
+                setNotifPermission(ok ? "granted" : Notification.permission);
+                if (ok) toast.success(notifPermission === "granted" ? "Subscription refreshed" : "Push notifications enabled");
+                else toast.error("Could not enable notifications");
+                setNotifLoading(false);
+              }}
+              className="shrink-0"
+            >
+              {notifLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} />
+              ) : notifPermission === "granted" ? (
+                <><Bell className="w-3.5 h-3.5 mr-1.5" strokeWidth={1.5} /> Refresh</>
+              ) : (
+                "Enable"
+              )}
+            </Button>
+          )}
+        </div>
+      </GroupedList>
 
-      <Card className="bg-card border-border shadow-card">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base font-display">
-            <Bell className="w-4 h-4" />
-            Push Notifications
-          </CardTitle>
-        </CardHeader>
-        <Separator />
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">Inbound message alerts</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {notifPermission === "granted"
-                  ? "Notifications are enabled on this device."
-                  : notifPermission === "denied"
-                  ? "Blocked in browser settings — reset site permissions to re-enable."
-                  : notifPermission === "unsupported"
-                  ? "Not supported in this browser."
-                  : "Get notified instantly when a lead replies."}
-              </p>
-            </div>
-            {notifPermission !== "unsupported" && notifPermission !== "denied" && (
-              <Button
-                size="sm"
-                variant={notifPermission === "granted" ? "outline" : "default"}
-                disabled={notifLoading}
-                onClick={async () => {
-                  setNotifLoading(true);
-                  const ok = await requestNotificationPermission(ADMIN_BUSINESS_ID);
-                  setNotifPermission(ok ? "granted" : Notification.permission);
-                  if (ok) toast.success(notifPermission === "granted" ? "Subscription refreshed on this device" : "Push notifications enabled");
-                  else toast.error("Could not enable notifications");
-                  setNotifLoading(false);
-                }}
-                className="shrink-0"
-              >
-                {notifLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : notifPermission === "granted" ? (
-                  <><Bell className="w-4 h-4 mr-1.5" />Refresh on this device</>
-                ) : (
-                  <><Bell className="w-4 h-4 mr-1.5" />Enable</>
-                )}
-              </Button>
-            )}
+      {settingsLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        FIELD_GROUPS.map((group) => (
+          <div key={group.label}>
+            <SectionHeader>{group.label}</SectionHeader>
+            <GroupedList>
+              {group.fields.map(({ key, label }) => (
+                <div key={key} className="px-4 py-3 space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">{label}</Label>
+                  <Input
+                    value={form[key] ?? ""}
+                    onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                    onBlur={() => handleSettingsBlur(key)}
+                    placeholder={`Enter ${label.toLowerCase()}...`}
+                    className="bg-transparent border-0 px-0 h-9 focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
+                  />
+                </div>
+              ))}
+            </GroupedList>
           </div>
-        </CardContent>
-      </Card>
+        ))
+      )}
 
-      <Tabs defaultValue="my_settings">
-        <TabsList className="mb-4">
-          <TabsTrigger value="my_settings">My Settings</TabsTrigger>
-          <TabsTrigger value="custom_values">Custom Values</TabsTrigger>
-        </TabsList>
+      <CustomValuesSection />
 
-        <TabsContent value="my_settings">
-          <Card className="bg-card border-border shadow-card">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-display">My Settings</CardTitle>
-            </CardHeader>
-            <Separator />
-            <CardContent className="pt-4">
-              <MySettingsTab />
-            </CardContent>
-          </Card>
-        </TabsContent>
+      <SectionHeader>Account</SectionHeader>
+      <GroupedList>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center justify-between gap-4 w-full px-4 py-3.5 hover:bg-secondary/40 transition-colors text-left active-press"
+        >
+          <span className="text-sm text-foreground">Sign out</span>
+          <LogOut className="w-4 h-4 text-muted-foreground" strokeWidth={1.5} />
+        </button>
+      </GroupedList>
 
-        <TabsContent value="custom_values">
-          <Card className="bg-card border-border shadow-card">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-display">Custom Values</CardTitle>
-            </CardHeader>
-            <Separator />
-            <CardContent className="pt-4">
-              <CustomValuesTab />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <div className="h-12" />
     </div>
   );
 }

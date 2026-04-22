@@ -3,18 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Flame,
-  CheckCircle,
   UserX,
   Clock,
   AlertTriangle,
   Zap,
-  ArrowRight,
-  Loader2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { differenceInDays, formatDistanceToNow } from "date-fns";
 
@@ -38,7 +34,6 @@ function useNeedsAttention() {
     queryFn: async () => {
       const items: AttentionItem[] = [];
 
-      // Fetch all in parallel
       const [contactsRes, failedSeqRes, repliedRes] = await Promise.all([
         supabase.from("contacts").select("id, full_name, stage, pipeline, stage_entered_at"),
         supabase
@@ -56,7 +51,6 @@ function useNeedsAttention() {
       const contacts = contactsRes.data || [];
       const now = new Date();
 
-      // No-showed Zoom contacts
       const noShowed = contacts.filter((c) => c.stage === "No Showed to Zoom");
       for (const c of noShowed) {
         items.push({
@@ -71,7 +65,6 @@ function useNeedsAttention() {
         });
       }
 
-      // Stale contacts (same stage for 5+ days)
       const terminalStages = ["Client Closed", "Client Churned", "Approved Retainer"];
       for (const c of contacts) {
         if (!c.stage_entered_at) continue;
@@ -92,7 +85,6 @@ function useNeedsAttention() {
         }
       }
 
-      // Failed automations
       const failedSeqs = failedSeqRes.data || [];
       for (const seq of failedSeqs) {
         const name = (seq as any).contacts?.full_name || "Unknown";
@@ -107,7 +99,6 @@ function useNeedsAttention() {
         });
       }
 
-      // Recent replies (marked_replied activity)
       const replies = repliedRes.data || [];
       for (const r of replies) {
         const name = (r as any).contacts?.full_name || "Unknown";
@@ -121,7 +112,6 @@ function useNeedsAttention() {
         });
       }
 
-      // Sort: most recent first
       items.sort((a, b) => {
         if (!a.timestamp || !b.timestamp) return 0;
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
@@ -133,101 +123,60 @@ function useNeedsAttention() {
   });
 }
 
-const typeConfig: Record<string, { icon: typeof Flame; badgeVariant: "default" | "secondary" | "destructive" | "outline" }> = {
-  no_show: { icon: UserX, badgeVariant: "destructive" },
-  stale: { icon: Clock, badgeVariant: "secondary" },
-  failed_automation: { icon: AlertTriangle, badgeVariant: "destructive" },
-  replied: { icon: Zap, badgeVariant: "default" },
+const typeIcons: Record<string, typeof Flame> = {
+  no_show: UserX,
+  stale: Clock,
+  failed_automation: AlertTriangle,
+  replied: Zap,
 };
-
-const typeLabel: Record<string, string> = {
-  no_show: "No Show",
-  stale: "Stale",
-  failed_automation: "Failed",
-  replied: "Replied",
-};
-
-const COLLAPSED_COUNT = 3;
 
 export default function NeedsAttentionSection() {
   const { data: items = [], isLoading } = useNeedsAttention();
   const [expanded, setExpanded] = useState(false);
 
-  if (isLoading) {
-    return (
-      <Card className="bg-card border-border shadow-card">
-        <CardContent className="p-6 flex justify-center">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const visible = expanded ? items : items.slice(0, COLLAPSED_COUNT);
-  const hiddenCount = items.length - COLLAPSED_COUNT;
+  if (isLoading || items.length === 0) return null;
 
   return (
-    <Card className="bg-card border-border shadow-card">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base font-display">
-          <Flame className="w-5 h-5 text-primary" />
-          Needs Attention 🔥
-          {items.length > 0 && (
-            <Badge variant="destructive" className="ml-auto text-xs">
-              {items.length}
-            </Badge>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {items.length === 0 ? (
-          <div className="flex items-center gap-2 py-3 text-sm">
-            <CheckCircle className="w-5 h-5 text-primary" />
-            <span>All clear — no action needed right now ✅</span>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {visible.map((item) => {
-              const config = typeConfig[item.type] || typeConfig.stale;
-              const Icon = config.icon;
-              return (
-                <div
-                  key={item.id}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                    <Icon className="w-4 h-4 text-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.contactName}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.description}</p>
-                  </div>
-                  <Badge variant={config.badgeVariant} className="text-[10px] shrink-0">
-                    {typeLabel[item.type]}
-                  </Badge>
-                  {item.contactId && (
-                    <Link to={`/contacts/${item.contactId}`}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                        <ArrowRight className="w-4 h-4" />
-                      </Button>
-                    </Link>
-                  )}
+    <div className="rounded-2xl bg-secondary/40 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/60 transition-colors active-press"
+      >
+        <Flame className="w-4 h-4 text-primary shrink-0" strokeWidth={1.5} />
+        <span className="text-sm text-foreground/90 flex-1">
+          {items.length} contact{items.length === 1 ? "" : "s"} need follow-up
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+          strokeWidth={1.5}
+        />
+      </button>
+      {expanded && (
+        <ul className="divide-y divide-border/40 border-t border-border/40">
+          {items.map((item) => {
+            const Icon = typeIcons[item.type] || Clock;
+            const row = (
+              <div className="flex items-center gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors">
+                <Icon className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{item.contactName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{item.description}</p>
                 </div>
-              );
-            })}
-            {hiddenCount > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-xs text-muted-foreground"
-                onClick={() => setExpanded(!expanded)}
-              >
-                {expanded ? "Show less" : `View all (${hiddenCount} more)`}
-              </Button>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+                <ChevronRight className="w-4 h-4 text-muted-foreground/60 shrink-0" strokeWidth={1.5} />
+              </div>
+            );
+            return (
+              <li key={item.id}>
+                {item.contactId ? (
+                  <Link to={`/contacts/${item.contactId}`}>{row}</Link>
+                ) : (
+                  row
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

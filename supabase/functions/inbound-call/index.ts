@@ -26,7 +26,10 @@ serve(async (req) => {
     params.forEach((v, k) => { paramObj[k] = v; });
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
     const signature = req.headers.get("X-Twilio-Signature");
-    const valid = await validateTwilioSignature(authToken, signature, req.url, paramObj);
+    // Supabase rewrites req.url to an internal http URL stripped of
+    // /functions/v1/...; reconstruct the public URL Twilio actually signed.
+    const validationUrl = `https://${new URL(req.url).host}/functions/v1/inbound-call`;
+    const valid = await validateTwilioSignature(authToken, signature, validationUrl, paramObj);
     if (!valid) {
       console.warn("[inbound-call] invalid Twilio signature — rejecting");
       return new Response("Forbidden", { status: 403 });

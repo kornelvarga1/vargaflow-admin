@@ -69,6 +69,49 @@ export async function requireAdmin(req: Request): Promise<void> {
   }
 }
 
+// Authorization for endpoints a business owner needs to call from their own
+// app (vargaflow-client), not just admin tooling. Accepts:
+//   1. service_role bearer (cron + server-side invokers).
+//   2. profile.role = 'admin' (vargaflow-admin tooling — full access).
+//   3. profile.business_id === businessId (the client owns this business).
+// Anything else throws.
+export async function requireAdminOrBusinessMember(
+  req: Request,
+  businessId: string,
+): Promise<void> {
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const authToken = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  const authClaims = decodeJwtClaims(authToken);
+  if (authClaims?.role === "service_role") return;
+
+  const userAuthHeader = req.headers.get("X-User-Auth") ?? "";
+  const userToken = (userAuthHeader || authHeader).replace(/^Bearer\s+/i, "").trim();
+  if (!userToken) throw new AuthError("UNAUTHORIZED", "missing token");
+
+  const userClaims = decodeJwtClaims(userToken);
+  if (!userClaims || userClaims.role === "anon") {
+    throw new AuthError("UNAUTHORIZED", "user session required");
+  }
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { data: userData, error: userErr } = await supabase.auth.getUser(userToken);
+  if (userErr || !userData?.user) throw new AuthError("UNAUTHORIZED", "invalid user token");
+
+  const { data: profile, error: profErr } = await supabase
+    .from("profiles")
+    .select("role, business_id")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+  if (profErr || !profile) throw new AuthError("FORBIDDEN", "profile not found");
+  if (profile.role === "admin") return;
+  if (profile.business_id === businessId) return;
+  throw new AuthError("FORBIDDEN", "business membership required");
+}
+
 // Lightweight webhook authenticator for providers whose dashboard UI can't
 // configure HMAC signatures (e.g. Calendly dashboard-created webhooks).
 // The webhook URL includes `?k=<secret>` and we verify it against an env var.

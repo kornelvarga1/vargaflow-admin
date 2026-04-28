@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { authErrorResponse, requireAdmin } from "../_shared/utils.ts";
+import { authErrorResponse, requireAdminOrBusinessMember } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,12 +11,12 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    await requireAdmin(req);
-
     const { contact_id, business_id, message, to_phone } = await req.json();
 
-    if (!contact_id) throw new Error("contact_id required");
     if (!business_id) throw new Error("business_id required");
+    await requireAdminOrBusinessMember(req, business_id);
+
+    if (!contact_id) throw new Error("contact_id required");
     if (!message) throw new Error("message required");
     if (!to_phone) throw new Error("to_phone required");
 

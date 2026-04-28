@@ -73,7 +73,13 @@ serve(async (req) => {
     params.forEach((v, k) => { paramObj[k] = v; });
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
     const signature = req.headers.get("X-Twilio-Signature");
-    const valid = await validateTwilioSignature(authToken, signature, req.url, paramObj);
+    // Supabase's gateway rewrites req.url to http + internal path; the Host
+    // header points at edge-runtime.supabase.com. Neither matches the public
+    // URL Twilio signed. req.url DOES preserve the public hostname though,
+    // so reconstruct: https + that hostname + the public function path.
+    const reqHost = new URL(req.url).host;
+    const validationUrl = `https://${reqHost}/functions/v1/inbound-sms`;
+    const valid = await validateTwilioSignature(authToken, signature, validationUrl, paramObj);
     if (!valid) {
       console.warn("[inbound-sms] invalid Twilio signature — rejecting");
       return new Response("Forbidden", { status: 403 });
@@ -112,32 +118,34 @@ serve(async (req) => {
 
     const businessId = settings.business_id;
 
-    // 2. Find or create contact by phone
-    //    CRM contacts have business_id = null, so try that first before falling back to business_id match
+    // 2. Find or create contact by phone.
+    //    Routing is driven by the receiving Twilio number's business — try a
+    //    contact in that business first, then fall back to a business_id=null
+    //    legacy/CRM contact only if no business-scoped match exists.
     let contactId: string;
     let contactBusinessId: string | null = null;
 
     // Pick the most recently created match deterministically — unique-phone
     // constraint is still TODO, so duplicates exist in the wild.
-    const { data: byNullBiz } = await supabase
-      .from("contacts")
-      .select("id, full_name, pipeline, outreach_angle, stage, business_id")
-      .eq("phone", from)
-      .is("business_id", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { data: byBiz } = !byNullBiz ? await supabase
+    const { data: byBiz } = await supabase
       .from("contacts")
       .select("id, full_name, pipeline, outreach_angle, stage, business_id")
       .eq("phone", from)
       .eq("business_id", businessId)
       .order("created_at", { ascending: false })
       .limit(1)
+      .maybeSingle();
+
+    const { data: byNullBiz } = !byBiz ? await supabase
+      .from("contacts")
+      .select("id, full_name, pipeline, outreach_angle, stage, business_id")
+      .eq("phone", from)
+      .is("business_id", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle() : { data: null };
 
-    const existing = byNullBiz ?? byBiz;
+    const existing = byBiz ?? byNullBiz;
 
     if (existing) {
       contactId = existing.id;
@@ -148,7 +156,7 @@ serve(async (req) => {
         .from("contacts")
         .insert({
           phone: from,  // already normalized at the top of the handler
-          business_id: null,
+          business_id: businessId,
           full_name: from,      // placeholder — can be updated later
           pipeline: "Sales",
           stage: "Lead In",
@@ -162,6 +170,7 @@ serve(async (req) => {
       }
 
       contactId = created.id;
+      contactBusinessId = businessId;
       console.log("[inbound-sms] new contact created:", contactId);
     }
 

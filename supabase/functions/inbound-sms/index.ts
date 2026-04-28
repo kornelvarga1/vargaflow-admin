@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { normalizePhone, validateTwilioSignature } from "../_shared/utils.ts";
 
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
+
 const APP_URL = Deno.env.get("APP_URL") ?? "https://app.vargaflow.com";
 
 const OUTREACH_PIPELINE = "Outreach";
@@ -167,22 +169,60 @@ serve(async (req) => {
 
     // 3. Insert inbound message into message_queue
     //    Use the contact's business_id so it appears in the correct app's inbox.
-    const { error: mqErr } = await supabase.from("message_queue").insert({
-      contact_id:      contactId,
-      business_id:     contactBusinessId,
-      direction:       "inbound",
-      status:          "received",
-      message_type:    "sms",
-      message_content: body,
-      to_phone:        from,
-      scheduled_at:    now,
-      metadata:        { from, to, message_sid: messageSid },
-    });
+    const { data: mqRow, error: mqErr } = await supabase
+      .from("message_queue")
+      .insert({
+        contact_id:      contactId,
+        business_id:     contactBusinessId,
+        direction:       "inbound",
+        status:          "received",
+        message_type:    "sms",
+        message_content: body,
+        to_phone:        from,
+        scheduled_at:    now,
+        metadata:        { from, to, message_sid: messageSid },
+      })
+      .select("id")
+      .single();
 
     if (mqErr) {
       console.error("[inbound-sms] message_queue insert failed:", mqErr.message);
     } else {
       console.log("[inbound-sms] message queued for contact:", contactId);
+    }
+
+    // 3b. Fire push notification in the background so the contractor sees
+    //     it within ~1s instead of waiting for the next cron tick. The push
+    //     block in cron-message-sender stays as the safety net for rows we
+    //     fail to mark push_notified=true here.
+    if (!mqErr && mqRow?.id && contactBusinessId) {
+      const pushUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-push-notification`;
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const messageId = mqRow.id;
+      const bizId = contactBusinessId;
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          const res = await fetch(pushUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${serviceRoleKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              business_id: bizId,
+              title: "New reply",
+              body: body.slice(0, 120),
+            }),
+          });
+          console.log(`[inbound-sms] push fired for biz ${bizId} status=${res.status}`);
+          await supabase
+            .from("message_queue")
+            .update({ push_notified: true })
+            .eq("id", messageId);
+        } catch (pushErr) {
+          console.error("[inbound-sms] background push failed:", pushErr);
+        }
+      })());
     }
 
     // 4. Log to activity_log

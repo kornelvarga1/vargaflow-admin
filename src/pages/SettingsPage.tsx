@@ -355,13 +355,13 @@ export default function SettingsPage() {
             onValueChange={(v) => v && setTheme(v as Theme)}
             className="gap-0 rounded-lg bg-muted p-0.5"
           >
-            <ToggleGroupItem value="light" aria-label="Light" className="h-8 px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm">
+            <ToggleGroupItem value="light" aria-label="Light" className="h-8 px-2.5 rounded-md text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">
               <Sun className="w-4 h-4" strokeWidth={1.5} />
             </ToggleGroupItem>
-            <ToggleGroupItem value="dark" aria-label="Dark" className="h-8 px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm">
+            <ToggleGroupItem value="dark" aria-label="Dark" className="h-8 px-2.5 rounded-md text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">
               <Moon className="w-4 h-4" strokeWidth={1.5} />
             </ToggleGroupItem>
-            <ToggleGroupItem value="system" aria-label="System" className="h-8 px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm">
+            <ToggleGroupItem value="system" aria-label="System" className="h-8 px-2.5 rounded-md text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">
               <Monitor className="w-4 h-4" strokeWidth={1.5} />
             </ToggleGroupItem>
           </ToggleGroup>

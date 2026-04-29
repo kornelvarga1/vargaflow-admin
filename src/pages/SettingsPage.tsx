@@ -5,10 +5,10 @@ import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, Plus, Trash2, Check, LogOut, Bell } from "lucide-react";
+import { Loader2, Plus, Trash2, Check, LogOut, Bell, Sun, Moon, Monitor } from "lucide-react";
 import { toast } from "sonner";
-import { Switch } from "@/components/ui/switch";
-import { useDarkMode } from "@/hooks/useDarkMode";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useTheme, type Theme } from "@/hooks/useTheme";
 import { requestNotificationPermission, getNotificationPermissionState } from "@/hooks/usePushNotifications";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 
@@ -294,7 +294,7 @@ function CustomValuesSection() {
 export default function SettingsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { isDark, toggle } = useDarkMode();
+  const { theme, setTheme } = useTheme();
   const { data: settings, isLoading: settingsLoading } = useMySettings();
   const [form, setForm] = useState<Record<string, string>>({});
   const [savedSnapshot, setSavedSnapshot] = useState<Record<string, string>>({});
@@ -348,8 +348,23 @@ export default function SettingsPage() {
       <SectionHeader>Appearance</SectionHeader>
       <GroupedList>
         <div className="flex items-center justify-between gap-4 px-4 py-3.5">
-          <p className="text-sm text-foreground">Dark Mode</p>
-          <Switch checked={isDark} onCheckedChange={toggle} />
+          <p className="text-sm text-foreground">Theme</p>
+          <ToggleGroup
+            type="single"
+            value={theme}
+            onValueChange={(v) => v && setTheme(v as Theme)}
+            className="gap-0 rounded-lg bg-muted p-0.5"
+          >
+            <ToggleGroupItem value="light" aria-label="Light" className="h-8 px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm">
+              <Sun className="w-4 h-4" strokeWidth={1.5} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="dark" aria-label="Dark" className="h-8 px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm">
+              <Moon className="w-4 h-4" strokeWidth={1.5} />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="system" aria-label="System" className="h-8 px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:shadow-sm">
+              <Monitor className="w-4 h-4" strokeWidth={1.5} />
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </GroupedList>
 

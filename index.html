@@ -20,9 +20,13 @@
     <script>
       (function() {
         try {
-          if (localStorage.getItem('vf_dark_mode') === 'true') {
-            document.documentElement.classList.add('dark');
+          var t = localStorage.getItem('vf_theme');
+          if (t !== 'light' && t !== 'dark' && t !== 'system') {
+            var legacy = localStorage.getItem('vf_dark_mode');
+            t = legacy === 'true' ? 'dark' : (legacy === 'false' ? 'light' : 'system');
           }
+          var dark = t === 'dark' || (t === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
         } catch(e) {}
       })();
     </script>

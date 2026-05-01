@@ -78,7 +78,7 @@ export default function LoginPage() {
           <Button
             type="submit"
             disabled={loading}
-            className="w-full"
+            className="w-full bg-foreground text-background hover:bg-foreground/90"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" strokeWidth={1.5} />

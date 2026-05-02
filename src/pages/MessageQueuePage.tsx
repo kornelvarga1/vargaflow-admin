@@ -439,7 +439,7 @@ export default function MessageQueuePage() {
                     </Badge>
                     {activeSeq && (
                       <Badge variant="outline" className="text-xs gap-1 border-border/60 text-muted-foreground font-normal">
-                        <Zap className="w-3 h-3 text-primary" strokeWidth={1.5} />
+                        <Zap className="w-3 h-3 text-muted-foreground" strokeWidth={1.5} />
                         {(activeSeq as any).sequences?.name || "Sequence"} — Step {activeSeq.current_step}
                       </Badge>
                     )}
@@ -541,7 +541,7 @@ function MessageBubble({ message }: { message: Message }) {
         <p className="text-[15px] leading-[1.45] whitespace-pre-wrap">
           {renderMessageContent(
             message.message_content,
-            "underline underline-offset-2 text-primary"
+            "underline underline-offset-2 text-foreground"
           )}
         </p>
         {isPending && (
@@ -652,7 +652,7 @@ function ComposeBar({
         <Button
           onClick={handleSend}
           disabled={!text.trim() || sending}
-          className="shrink-0 h-12 w-12 rounded-full"
+          className="shrink-0 h-12 w-12 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
           size="icon"
         >
           {sending ? (

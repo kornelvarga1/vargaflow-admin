@@ -92,7 +92,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               className={({ isActive }) =>
                 `flex items-center justify-center w-10 h-10 rounded-xl transition-colors active-press ${
                   isActive
-                    ? "bg-secondary text-primary"
+                    ? "bg-secondary text-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                 }`
               }
@@ -128,7 +128,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             className={({ isActive }) =>
               `flex items-center gap-2 px-3 py-2 rounded-2xl text-sm font-medium transition-colors active-press ${
                 isActive
-                  ? "bg-secondary text-primary"
+                  ? "bg-secondary text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
               }`
             }

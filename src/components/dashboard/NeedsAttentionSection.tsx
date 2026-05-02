@@ -142,7 +142,7 @@ export default function NeedsAttentionSection() {
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-secondary/60 transition-colors active-press"
       >
-        <Flame className="w-4 h-4 text-primary shrink-0" strokeWidth={1.5} />
+        <Flame className="w-4 h-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
         <span className="text-sm text-foreground/90 flex-1">
           {items.length} contact{items.length === 1 ? "" : "s"} need follow-up
         </span>

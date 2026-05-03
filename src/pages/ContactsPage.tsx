@@ -204,7 +204,7 @@ export default function ContactsPage() {
       <button
         onClick={() => { setEditing(null); setDialogOpen(true); }}
         aria-label="Add contact"
-        className="fixed right-5 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-float flex items-center justify-center active-press hover:brightness-110 transition"
+        className="fixed right-5 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-fab flex items-center justify-center active-press hover:brightness-110 transition"
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
       >
         <Plus className="w-6 h-6" strokeWidth={2} />

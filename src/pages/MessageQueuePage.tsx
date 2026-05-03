@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   MessageSquare,
-  Send,
   Loader2,
   Search,
   ArrowLeft,
@@ -652,13 +651,29 @@ function ComposeBar({
         <Button
           onClick={handleSend}
           disabled={!text.trim() || sending}
-          className="shrink-0 h-12 w-12 rounded-full bg-primary text-primary-foreground hover:bg-primary/90"
+          className={`shrink-0 h-12 w-12 rounded-2xl transition-colors disabled:opacity-100 [&_svg]:size-6 ${
+            text.trim()
+              ? "bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-secondary text-muted-foreground hover:bg-secondary"
+          }`}
           size="icon"
         >
           {sending ? (
             <Loader2 className="w-5 h-5 animate-spin" strokeWidth={1.5} />
           ) : (
-            <Send className="w-5 h-5" strokeWidth={1.5} />
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-6 h-6"
+              aria-hidden="true"
+            >
+              <path d="M12 3v18" />
+              <path d="m8.5 7.5 3.5-4.5 3.5 4.5" />
+            </svg>
           )}
         </Button>
       </div>

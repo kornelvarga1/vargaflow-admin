@@ -15,6 +15,7 @@ import {
   Loader2,
   Search,
   ArrowLeft,
+  ArrowUp,
   Zap,
   Phone,
 } from "lucide-react";
@@ -632,8 +633,9 @@ function ComposeBar({
   };
 
   return (
-    <div className="px-3 py-3 border-t border-border/40 bg-background shrink-0">
-      <div className="flex items-end gap-2">
+    <div className="px-3 py-2 border-t border-border/40 bg-background shrink-0">
+      {/* Mobile: separated slim bar + bigger button beside */}
+      <div className="md:hidden flex items-end gap-2">
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -645,37 +647,61 @@ function ComposeBar({
           autoCapitalize="off"
           spellCheck={false}
           data-form-type="other"
-          className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-3 text-base placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring min-h-[48px] max-h-[140px]"
+          className="flex-1 resize-none rounded-full border border-input bg-background px-4 py-1.5 text-base placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring min-h-[36px] max-h-[120px]"
           rows={1}
         />
-        <Button
+        <button
+          type="button"
           onClick={handleSend}
           disabled={!text.trim() || sending}
-          className={`shrink-0 h-12 w-12 rounded-2xl transition-colors disabled:opacity-100 [&_svg]:size-6 ${
+          aria-label="Send"
+          className={`shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-100 ${
             text.trim()
-              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-              : "bg-secondary text-muted-foreground hover:bg-secondary"
+              ? "bg-primary text-primary-foreground hover:brightness-110"
+              : "bg-secondary text-muted-foreground"
           }`}
-          size="icon"
         >
           {sending ? (
-            <Loader2 className="w-5 h-5 animate-spin" strokeWidth={1.5} />
+            <Loader2 className="w-5 h-5 animate-spin" strokeWidth={2} />
           ) : (
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-6 h-6"
-              aria-hidden="true"
-            >
-              <path d="M12 3v18" />
-              <path d="m8.5 7.5 3.5-4.5 3.5 4.5" />
-            </svg>
+            <ArrowUp className="w-5 h-5" strokeWidth={2.25} />
           )}
-        </Button>
+        </button>
+      </div>
+
+      {/* Desktop: unified rounded-full pill with button inside */}
+      <div className="hidden md:block relative rounded-full border border-input bg-background focus-within:ring-2 focus-within:ring-ring transition-shadow">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={`Message ${contactName}...`}
+          inputMode="text"
+          autoComplete="new-password"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-form-type="other"
+          className="block w-full resize-none bg-transparent pl-5 pr-12 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-[120px]"
+          rows={1}
+        />
+        <button
+          type="button"
+          onClick={handleSend}
+          disabled={!text.trim() || sending}
+          aria-label="Send"
+          className={`absolute right-1 bottom-1 h-9 w-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-100 ${
+            text.trim()
+              ? "bg-primary text-primary-foreground hover:brightness-110"
+              : "bg-secondary text-muted-foreground"
+          }`}
+        >
+          {sending ? (
+            <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+          ) : (
+            <ArrowUp className="w-4 h-4" strokeWidth={2.25} />
+          )}
+        </button>
       </div>
     </div>
   );

@@ -210,6 +210,7 @@ serve(async (req) => {
           to,
           subject,
           html,
+          ...(settings.my_email ? { reply_to: settings.my_email } : {}),
         }),
       });
       if (!res.ok) {
@@ -250,7 +251,7 @@ serve(async (req) => {
         message_content: html,
         scheduled_at: scheduledAt.toISOString(),
         status: "pending",
-        metadata: { to, subject },
+        metadata: { to, subject, ...(settings.my_email ? { reply_to: settings.my_email } : {}) },
       });
       if (qErr) {
         console.error("[QUEUE EMAIL] insert FAILED — to:", to, "subject:", subject, "error:", qErr.message);
@@ -293,57 +294,55 @@ serve(async (req) => {
 
       await sendEmail(
         contactEmail,
-        `Action Required — Call with ${myName}`,
-        `<p>${contactName}, your Zoom call has been booked.</p>
-         <p>Date: ${appointmentTime}</p>
+        `Your call with ${myName} is booked`,
+        `<p>Hey ${contactName},</p>
+         <p>Your Zoom call with ${myName} is booked for ${appointmentTime}.</p>
          <p>Join link: ${meetingLink || "[Zoom link will be sent before call]"}</p>
-         <p>Reply YES to confirm.</p>
+         <p>If anything's changed, just reply to this email.</p>
          <p>— ${myName}</p>`
       );
 
       await queueSMS(
         resolvedPhone,
-        `Hey, it's ${myName}. I am real this time 😄 I have our Zoom call scheduled for ${appointmentTime} your time. Have you added it to your calendar?`,
-        new Date(Date.now() + 2 * 60 * 1000)
-      );
-
-      await queueSMS(
-        resolvedPhone,
-        `👍👍 By the way, here is that short video breaking down exactly what we do: ${videoLink}`,
+        `By the way, here's a short video breaking down exactly what I built: ${videoLink}`,
         new Date(Date.now() + 4 * 60 * 1000)
       );
 
       const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
       await queueSMS(
         resolvedPhone,
-        `Hey, we have our call tomorrow. Just wanted to hit you with a few links if you want to do your homework on us: ${websiteUrl} ${videoLink}`,
+        `Hey, we have our call tomorrow. A few links if you want to do your homework on me: ${websiteUrl} ${videoLink}`,
         reminder24h
       );
       await queueEmail(
         contactEmail,
-        `Action Required — Zoom Call with ${myName}`,
-        `<p>Don't forget ${contactName}, your Zoom call with ${myName} is in 24 hours at ${appointmentTime}.</p>
-         <p>Please reply YES to confirm. Talk soon, ${myName}, ${companyName}</p>`,
+        `Your Zoom call with ${myName} is in 24 hours`,
+        `<p>Hey ${contactName},</p>
+         <p>Don't forget — your Zoom call with ${myName} is in 24 hours at ${appointmentTime}.</p>
+         <p>If anything's changed, just reply and we'll sort it out.</p>
+         <p>— ${myName}, ${companyName}</p>`,
         reminder24h
       );
 
       await queueSMS(
         resolvedPhone,
-        `Excited to talk in a few hours ${contactName}. I Googled your business and have some notes on easy fixes you can implement yourself. Talk soon, ${myName}`,
+        `Looking forward to our call in a few hours ${contactName}. Talk soon, ${myName}`,
         new Date(meetingDate.getTime() - 2 * 60 * 60 * 1000)
       );
 
       const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
       await queueSMS(
         resolvedPhone,
-        `See you on Zoom in 1 hour! Just sent the Zoom link to your email. Here it is: ${meetingLink}`,
+        `See you on Zoom in 1 hour! Zoom link is in your Calendly confirmation email — also here: ${meetingLink}`,
         reminder1h
       );
       await queueEmail(
         contactEmail,
         `Your Zoom call is in 1 hour`,
-        `<p>Hey ${contactName}, your Zoom call with me is in 1 hour at ${appointmentTime}. Talk soon, ${myName}, ${companyName}</p>
-         <p><a href="${meetingLink}">Click here to join</a></p>`,
+        `<p>Hey ${contactName},</p>
+         <p>Your Zoom call with me is in 1 hour at ${appointmentTime}.</p>
+         <p><a href="${meetingLink}">Click here to join</a></p>
+         <p>Talk soon — ${myName}</p>`,
         reminder1h
       );
       if (myPhone) {
@@ -377,9 +376,10 @@ serve(async (req) => {
       console.log("[13] returning booker branch");
       await sendEmail(
         contactEmail,
-        `Action Required — Call with ${myName}`,
-        `<p>${contactName}, your Zoom call has been booked.</p>
-         <p>Date: ${appointmentTime}</p>
+        `Your call with ${myName} is rebooked`,
+        `<p>Hey ${contactName},</p>
+         <p>Got you back on the calendar — Zoom call with ${myName} is set for ${appointmentTime}.</p>
+         <p>If anything's changed, just reply to this email.</p>
          <p>— ${myName}</p>`
       );
 
@@ -391,7 +391,7 @@ serve(async (req) => {
 
       await queueSMS(
         resolvedPhone,
-        `😊 You might have seen these already but just so you know, we are not full of it — I take a lot of pride in our reviews: ${testimonialsLink}`,
+        `You might have seen this already but just so you know — I take a lot of pride in my work. Take a look: ${websiteUrl}`,
         new Date(Date.now() + 15 * 60 * 1000)
       );
 
@@ -411,7 +411,7 @@ serve(async (req) => {
       const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
       await queueSMS(
         resolvedPhone,
-        `See you in an hour! Sending the link to your email. Here it is: ${meetingLink} — ${myName}`,
+        `See you in an hour! Zoom link is in your Calendly confirmation email — also here: ${meetingLink} — ${myName}`,
         reminder1h
       );
       if (myPhone) {

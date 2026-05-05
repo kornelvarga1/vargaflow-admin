@@ -147,6 +147,7 @@ async function sendEmail(
   content: string,
   fromEmail: string,
   contactId: string | null,
+  replyTo: string | null = null,
 ): Promise<void> {
   const unsubUrl = contactId
     ? `${Deno.env.get("SUPABASE_URL")}/functions/v1/unsubscribe?c=${contactId}`
@@ -172,6 +173,7 @@ async function sendEmail(
       to,
       subject,
       html: content + footer,
+      ...(replyTo ? { reply_to: replyTo } : {}),
       headers,
     }),
   });
@@ -422,9 +424,10 @@ serve(async (_req) => {
           const to = msg.metadata?.to ?? msg.to_phone;
           const subject = msg.metadata?.subject ?? "Message from your contractor";
           const fromEmail = msg.metadata?.from_email ?? "VargaFlow <hello@vargaflow.com>";
+          const replyTo = msg.metadata?.reply_to ?? null;
           if (!to) throw new Error(`No email address for message ${msg.id}`);
 
-          await sendEmail(to, subject, msg.message_content, fromEmail, msg.contact_id);
+          await sendEmail(to, subject, msg.message_content, fromEmail, msg.contact_id, replyTo);
 
           await supabase
             .from("message_queue")

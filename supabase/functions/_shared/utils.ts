@@ -242,6 +242,7 @@ export function resolveTemplate(
     launch_call_calendar_link: settings.launch_call_calendar_link ?? "",
     onboarding_form_link: settings.onboarding_form_link ?? "",
     instagram_url: settings.instagram_url ?? "",
+    gmb_tutorial_link: settings.gmb_tutorial_link ?? "",
   };
 
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
@@ -274,7 +275,7 @@ export async function queueSteps(
       scheduled_at: sendAt.toISOString(),
       status: "pending",
       metadata: step.message_type === "email"
-        ? { to, subject: `Message from ${settings.company_name ?? "your contractor"}` }
+        ? { to, subject: `Message from ${settings.company_name ?? "your contractor"}`, ...(settings.my_email ? { reply_to: settings.my_email } : {}) }
         : { to },
     };
   });
@@ -318,6 +319,7 @@ export async function sendEmailWithUnsubscribe(
     subject: string;
     html: string;
     contactId: string;
+    replyTo?: string;
   }
 ): Promise<Response> {
   const unsubUrl = unsubscribeUrl(params.contactId);
@@ -337,6 +339,7 @@ export async function sendEmailWithUnsubscribe(
       to: params.to,
       subject: params.subject,
       html: params.html + footer,
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
       headers: {
         "List-Unsubscribe": `<${unsubUrl}>, <mailto:unsub@vargaflow.com>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

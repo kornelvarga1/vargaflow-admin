@@ -53,6 +53,7 @@ serve(async (req) => {
     const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
     const onboardingFormLink = settings.onboarding_form_link || "[onboarding form link]";
+    const gmbTutorialLink = settings.gmb_tutorial_link || "https://www.youtube.com/watch?v=vlwDSdFTvmI";
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
 
     const firstName = contact.full_name?.split(" ")[0] ?? "there";
@@ -64,15 +65,16 @@ serve(async (req) => {
       resendKey,
       from: `${companyName} <hello@vargaflow.com>`,
       to: email,
-      subject: `Onboarding Reminder for ${contact.full_name}`,
+      subject: `Quick reminder — your onboarding form`,
       contactId: contact.id,
+      replyTo: myEmail,
       html: `
-        <p>Hey ${firstName}, we're happy to have you on board!</p>
-        <p>Before we can begin we'll need just 15 minutes of your time.</p>
-        <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
-        <p><strong>Step 2:</strong> Send us at least 25 photos — email to ${myEmail}</p>
-        <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
-        <p>Please take care of this right now. Thanks! — ${myName}, ${companyName}</p>
+        <p>Hey ${firstName}, glad to have you on board!</p>
+        <p>Before I can get started I just need a couple things from you:</p>
+        <p><strong>Step 1:</strong> Fill in the setup form (project photos go in there too): <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
+        <p><strong>Step 2:</strong> Give me manager access to your Google Business Profile — quick tutorial: <a href="${gmbTutorialLink}">${gmbTutorialLink}</a></p>
+        <p>Please take care of this when you get a sec. Thanks!</p>
+        <p>— ${myName}, ${companyName}</p>
       `,
     });
     if (!emailRes.ok) {
@@ -85,7 +87,7 @@ serve(async (req) => {
       contact_id: contact.id,
       business_id: bid,
       message_type: "sms",
-      message_content: `Hey ${firstName}, super friendly but important reminder to please fill out your onboarding info. Here's the form: ${onboardingFormLink} — ${myName}. PS: I just re-emailed the onboarding info to your email.`,
+      message_content: `Hey ${firstName}, friendly reminder to fill out your onboarding info when you have a sec. Here's the form: ${onboardingFormLink} — ${myName}. PS: I just re-emailed the onboarding info to your inbox — check junk/spam/promotions just in case.`,
       scheduled_at: new Date(Date.now() + 60 * 1000).toISOString(),
       status: "pending",
       metadata: { to: phone },

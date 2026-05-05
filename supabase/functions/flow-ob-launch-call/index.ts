@@ -39,6 +39,7 @@ serve(async (req) => {
     const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
     const myPhone = settings.my_phone || "";
+    const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
     const videoLink = settings.software_explanation_video || "[video link]";
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
@@ -76,7 +77,7 @@ serve(async (req) => {
         message_content: html,
         scheduled_at: scheduledAt.toISOString(),
         status: "pending",
-        metadata: { to, subject },
+        metadata: { to, subject, ...(myEmail ? { reply_to: myEmail } : {}) },
       });
     };
 
@@ -121,14 +122,16 @@ serve(async (req) => {
       resendKey,
       from: `${companyName} <hello@vargaflow.com>`,
       to: email,
-      subject: `Launch Call Booked for ${apptTime}`,
+      subject: `Your launch call is booked for ${apptTime}`,
       contactId: contact.id,
+      replyTo: myEmail,
       html: `
         <p>Congrats ${firstName}!</p>
         <p>Your launch call has been scheduled for ${apptTime}.</p>
-        <p>It will be a 30-45 minute Zoom call. You'll get the Zoom link in your inbox 10 minutes before your appointment.</p>
+        <p>It will be a 20-30 minute Zoom call. You'll get the Zoom link in your inbox 10 minutes before your appointment.</p>
         <p>If you want to watch a walkthrough video: <a href="${videoLink}">click here</a></p>
-        <p>We look forward to getting your launch done! — ${myName}, ${companyName}</p>
+        <p>Looking forward to walking you through it!</p>
+        <p>— ${myName}, ${companyName}</p>
       `,
     });
     if (!emailRes.ok) {
@@ -140,7 +143,7 @@ serve(async (req) => {
     const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
     await queueSMS(
       phone,
-      `Hey ${firstName}, just a reminder — your launch call with me from ${companyName} is in 24 hours at ${apptTime}. We'll be sending the Zoom link 10 minutes before 😄`,
+      `Hey ${firstName}, just a reminder — your launch call with me from ${companyName} is in 24 hours at ${apptTime}. I'll be sending the Zoom link 10 minutes before 😄`,
       reminder24h
     );
     if (myPhone) {
@@ -184,7 +187,7 @@ serve(async (req) => {
     // 3 days after: scam warning
     await queueSMS(
       phone,
-      `Just a quick heads up — whenever a new website/Google page goes live, hundreds of companies get notified in the first 2-3 weeks. You'll probably get some spam calls. Don't fall for any sketchy overseas guys 😄 — ${myName}`,
+      `Just a quick heads up — whenever a new website/Google page goes live, hundreds of companies get notified in the first 2-3 weeks. You'll probably get some spam calls. Don't fall for any sketchy salespeople pitching SEO/web stuff 😄 — ${myName}`,
       new Date(meetingDate.getTime() + 3 * 24 * 60 * 60 * 1000)
     );
 

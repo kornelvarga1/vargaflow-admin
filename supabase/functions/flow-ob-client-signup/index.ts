@@ -33,6 +33,7 @@ serve(async (req) => {
     const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
     const onboardingFormLink = settings.onboarding_form_link || "https://vargaflow.com/onboarding-form";
+    const gmbTutorialLink = settings.gmb_tutorial_link || "https://www.youtube.com/watch?v=vlwDSdFTvmI";
 
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
@@ -74,15 +75,16 @@ serve(async (req) => {
       resendKey,
       from: `${companyName} <hello@vargaflow.com>`,
       to: email,
-      subject: "Let's Get You Onboarded!",
+      subject: "Let's get you onboarded",
       contactId: contact.id,
+      replyTo: myEmail,
       html: `
         <p>Hey ${firstName},</p>
-        <p>Please go through these steps so we can get started on your website and marketing systems.</p>
-        <p><strong>Step 1:</strong> Fill in the setup form: <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
-        <p><strong>Step 2:</strong> Send us at least 25 photos of your finished projects — email them to ${myEmail}</p>
-        <p><strong>Step 3:</strong> Give us access to your Google My Business.</p>
-        <p>Thanks! — ${myName}, ${companyName}</p>
+        <p>Please go through these two steps so I can get started on your website and marketing systems.</p>
+        <p><strong>Step 1:</strong> Fill in the setup form (project photos go in there too): <a href="${onboardingFormLink}">${onboardingFormLink}</a></p>
+        <p><strong>Step 2:</strong> Give me manager access to your Google Business Profile — quick tutorial: <a href="${gmbTutorialLink}">${gmbTutorialLink}</a></p>
+        <p>Thanks!</p>
+        <p>— ${myName}, ${companyName}</p>
       `,
     });
     if (!emailRes.ok) {
@@ -98,7 +100,7 @@ serve(async (req) => {
       contact_id: contact.id,
       business_id: bid,
       message_type: "sms",
-      message_content: `We just sent your onboarding information to your email. Please let us know when you receive it. PS: check your junk/spam just in case! — ${companyName}`,
+      message_content: `I just sent your onboarding info to your email. Please let me know when you receive it. PS: check your junk/spam/promotions just in case! — ${companyName}`,
       scheduled_at: new Date(Date.now() + 10 * 1000).toISOString(),
       status: "pending",
       metadata: { to: phone },

@@ -483,7 +483,7 @@ export default function MessageQueuePage() {
             </div>
 
             {/* Compose */}
-            <div className="flex-none" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+            <div className="flex-none" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)" }}>
               <ComposeBar
                 contactId={selectedContactId}
                 contactName={selectedContact?.full_name || ""}

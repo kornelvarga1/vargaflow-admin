@@ -48,9 +48,17 @@ serve(async (req) => {
     const phone = contact.phone;
     const email = contact.email;
     const zoomLink = meeting_link || "[zoom link]";
-    const apptTime = appointment_time
-      ? new Date(appointment_time).toLocaleString("en-US", { timeZone: "America/New_York" })
-      : "your scheduled time";
+    // Pull the contact's local TZ (saved by flow-call-booked from
+    // invitee.timezone). Fallback to ET so older contacts without the column
+    // still render a sane time.
+    const contactTz = contact.timezone || "America/New_York";
+    const formatTime = (tz: string) =>
+      appointment_time
+        ? new Date(appointment_time).toLocaleString("en-US", { timeZone: tz })
+        : "your scheduled time";
+    const apptTimeForContact = formatTime(contactTz);
+    // Internal SMS goes to Kornél in Hungary (DST-aware via Europe/Budapest).
+    const apptTimeForMe = formatTime("Europe/Budapest");
     const meetingDate = appointment_time ? new Date(appointment_time) : new Date();
 
     const now = Date.now();
@@ -99,7 +107,7 @@ serve(async (req) => {
         contact_id: contact.id,
         business_id: bid,
         message_type: "sms",
-        message_content: `🚀 Launch call booked by ${contact.full_name}. They just booked for ${apptTime}. Remember to quality check their account before the call!`,
+        message_content: `🚀 Launch call booked by ${contact.full_name}. They just booked for ${apptTimeForMe}. Remember to quality check their account before the call!`,
         scheduled_at: new Date().toISOString(),
         status: "pending",
         metadata: { to: myPhone },
@@ -111,7 +119,7 @@ serve(async (req) => {
       contact_id: contact.id,
       business_id: bid,
       message_type: "sms",
-      message_content: `Hey ${firstName}, your launch call with ${myName} has been booked for ${apptTime}. This will be a 20-30 minute walkthrough of your new website + marketing systems. Please join on a computer — it will make everything much easier. Talk soon! — ${myName}`,
+      message_content: `Hey ${firstName}, your launch call with ${myName} has been booked for ${apptTimeForContact}. This will be a 20-30 minute walkthrough of your new website + marketing systems. Please join on a computer — it will make everything much easier. Talk soon! — ${myName}`,
       scheduled_at: new Date().toISOString(),
       status: "pending",
       metadata: { to: phone },
@@ -122,12 +130,12 @@ serve(async (req) => {
       resendKey,
       from: `${companyName} <hello@vargaflow.com>`,
       to: email,
-      subject: `Your launch call is booked for ${apptTime}`,
+      subject: `Your launch call is booked for ${apptTimeForContact}`,
       contactId: contact.id,
       replyTo: myEmail,
       html: `
         <p>Congrats ${firstName}!</p>
-        <p>Your launch call has been scheduled for ${apptTime}.</p>
+        <p>Your launch call has been scheduled for ${apptTimeForContact}.</p>
         <p>It will be a 20-30 minute Zoom call. You'll get the Zoom link in your inbox 10 minutes before your appointment.</p>
         <p>If you want to watch a walkthrough video: <a href="${videoLink}">click here</a></p>
         <p>Looking forward to walking you through it!</p>
@@ -143,7 +151,7 @@ serve(async (req) => {
     const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
     await queueSMS(
       phone,
-      `Hey ${firstName}, just a reminder — your launch call with me from ${companyName} is in 24 hours at ${apptTime}. I'll be sending the Zoom link 10 minutes before 😄`,
+      `Hey ${firstName}, just a reminder — your launch call with me from ${companyName} is in 24 hours at ${apptTimeForContact}. I'll be sending the Zoom link 10 minutes before 😄`,
       reminder24h
     );
     if (myPhone) {

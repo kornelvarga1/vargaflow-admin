@@ -36,9 +36,15 @@ serve(async (req) => {
     const contactName = invitee.name ?? event.name ?? event.first_name ?? "there";
     const contactEmail = invitee.email ?? event.email ?? "";
     const meetingLink = event.scheduled_event?.location?.join_url ?? "";
-    const appointmentTime = eventTime
-      ? new Date(eventTime).toLocaleString("en-US", { timeZone: "America/New_York" })
-      : "your scheduled time";
+    // Calendly auto-detects the invitee's TZ from their browser. Fallback to
+    // ET so the lead's reminder still reads sanely if Calendly omits it.
+    const inviteeTz = invitee.timezone ?? event.timezone ?? "America/New_York";
+    const formatTime = (tz: string) =>
+      eventTime ? new Date(eventTime).toLocaleString("en-US", { timeZone: tz }) : "your scheduled time";
+    const appointmentTimeForContact = formatTime(inviteeTz);
+    // Internal SMS goes to Kornél in Hungary — Europe/Budapest handles DST
+    // automatically (CET in winter, CEST in summer).
+    const appointmentTimeForMe = formatTime("Europe/Budapest");
 
     // Extract phone: check text_reminder_number first, then questions_and_answers
     let contactPhone = invitee.text_reminder_number ?? "";
@@ -95,6 +101,10 @@ serve(async (req) => {
 
     if (contact) {
       console.log("[5] existing contact found:", contact.id, "phone:", contact.phone);
+      // Backfill timezone if Calendly provided one and we don't have it yet.
+      if (invitee.timezone && !contact.timezone) {
+        await supabase.from("contacts").update({ timezone: invitee.timezone }).eq("id", contact.id);
+      }
     } else {
       const { data: newContact, error: insertError } = await supabase
         .from("contacts")
@@ -105,6 +115,7 @@ serve(async (req) => {
           business_id: businessId,
           pipeline: "Sales",
           stage: "Zoom Call Booked",
+          timezone: invitee.timezone ?? null,
         })
         .select()
         .single();
@@ -275,7 +286,7 @@ serve(async (req) => {
     console.log("[11] sending confirmation SMS to:", resolvedPhone);
     await sendSMS(
       resolvedPhone,
-      `Booked! Your Zoom call with ${myName} is all set for ${appointmentTime}. — ${myName}`
+      `Booked! Your Zoom call with ${myName} is all set for ${appointmentTimeForContact}. — ${myName}`
     );
 
     // Step 2: Internal SMS immediately
@@ -283,7 +294,7 @@ serve(async (req) => {
     if (myPhone) {
       await sendSMS(
         myPhone,
-        `${contactName} just booked the call. Date: ${appointmentTime}. Number: ${resolvedPhone}.`
+        `${contactName} just booked the call. Date: ${appointmentTimeForMe}. Number: ${resolvedPhone}.`
       );
     }
 
@@ -296,7 +307,7 @@ serve(async (req) => {
         contactEmail,
         `Your call with ${myName} is booked`,
         `<p>Hey ${contactName},</p>
-         <p>Your Zoom call with ${myName} is booked for ${appointmentTime}.</p>
+         <p>Your Zoom call with ${myName} is booked for ${appointmentTimeForContact}.</p>
          <p>Join link: ${meetingLink || "[Zoom link will be sent before call]"}</p>
          <p>If anything's changed, just reply to this email.</p>
          <p>— ${myName}</p>`
@@ -318,7 +329,7 @@ serve(async (req) => {
         contactEmail,
         `Your Zoom call with ${myName} is in 24 hours`,
         `<p>Hey ${contactName},</p>
-         <p>Don't forget — your Zoom call with ${myName} is in 24 hours at ${appointmentTime}.</p>
+         <p>Don't forget — your Zoom call with ${myName} is in 24 hours at ${appointmentTimeForContact}.</p>
          <p>If anything's changed, just reply and we'll sort it out.</p>
          <p>— ${myName}, ${companyName}</p>`,
         reminder24h
@@ -340,7 +351,7 @@ serve(async (req) => {
         contactEmail,
         `Your Zoom call is in 1 hour`,
         `<p>Hey ${contactName},</p>
-         <p>Your Zoom call with me is in 1 hour at ${appointmentTime}.</p>
+         <p>Your Zoom call with me is in 1 hour at ${appointmentTimeForContact}.</p>
          <p><a href="${meetingLink}">Click here to join</a></p>
          <p>Talk soon — ${myName}</p>`,
         reminder1h
@@ -378,14 +389,14 @@ serve(async (req) => {
         contactEmail,
         `Your call with ${myName} is rebooked`,
         `<p>Hey ${contactName},</p>
-         <p>Got you back on the calendar — Zoom call with ${myName} is set for ${appointmentTime}.</p>
+         <p>Got you back on the calendar — Zoom call with ${myName} is set for ${appointmentTimeForContact}.</p>
          <p>If anything's changed, just reply to this email.</p>
          <p>— ${myName}</p>`
       );
 
       await queueSMS(
         resolvedPhone,
-        `Hey ${contactName}, got you scheduled in again for ${appointmentTime}. This 100% works for you, right? — ${myName}`,
+        `Hey ${contactName}, got you scheduled in again for ${appointmentTimeForContact}. This 100% works for you, right? — ${myName}`,
         new Date(Date.now() + 60 * 1000)
       );
 

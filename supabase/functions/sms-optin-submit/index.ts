@@ -29,44 +29,14 @@ serve(async (req) => {
       marketing_consent,
     } = body ?? {};
 
-    // Required fields — defense in depth on top of the client validation.
-    if (
-      typeof first_name !== "string" || !first_name.trim() ||
-      typeof last_name !== "string" || !last_name.trim() ||
-      typeof email !== "string" || !email.trim() ||
-      typeof phone !== "string" || !phone.trim()
-    ) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Missing required fields" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // At least one consent must be selected. The current UI requires both,
-    // but the backend stays permissive in case the rule loosens later — a
-    // row with neither consent is meaningless and treated as a bug/attack.
-    if (!customer_care_consent && !marketing_consent) {
-      return new Response(
-        JSON.stringify({ success: false, error: "At least one consent must be selected" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Normalize phone to E.164 (US-only +1). Accept any input the client
-    // sends — already-formatted "+15551234567", raw "5551234567", or
-    // pretty "(555) 123-4567" — and produce a single canonical form.
-    const digits = phone.replace(/\D/g, "");
-    const tenDigits =
-      digits.length === 10 ? digits :
-      digits.length === 11 && digits.startsWith("1") ? digits.slice(1) :
-      null;
-    if (!tenDigits) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Phone must be a 10-digit US number" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    const phoneE164 = `+1${tenDigits}`;
+    // All fields optional — A2P compliance form, store whatever the visitor provided.
+    // Best-effort E.164 normalization for phone; if it doesn't parse, pass through as-is.
+    const phoneStr = typeof phone === "string" ? phone : "";
+    const digits = phoneStr.replace(/\D/g, "");
+    const phoneStored =
+      digits.length === 10 ? `+1${digits}` :
+      digits.length === 11 && digits.startsWith("1") ? `+${digits}` :
+      phoneStr;
 
     // Capture IP + user-agent server-side. x-forwarded-for can contain a
     // chain of proxies; the originating client is the first entry.
@@ -84,10 +54,10 @@ serve(async (req) => {
     const { data, error } = await supabase
       .from("sms_optins")
       .insert({
-        first_name: first_name.trim(),
-        last_name: last_name.trim(),
-        email: email.trim(),
-        phone: phoneE164,
+        first_name: typeof first_name === "string" ? first_name.trim() : "",
+        last_name: typeof last_name === "string" ? last_name.trim() : "",
+        email: typeof email === "string" ? email.trim() : "",
+        phone: phoneStored,
         customer_care_consent: !!customer_care_consent,
         marketing_consent: !!marketing_consent,
         ip_address: ipAddress,

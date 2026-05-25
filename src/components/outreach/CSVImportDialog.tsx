@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Upload } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/phone";
+import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -203,6 +204,7 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
         pipeline: string;
         stage: string;
         lead_source: string;
+        business_id: string;
       }[] = [];
 
       const seenInBatch = new Set<string>();
@@ -231,6 +233,7 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
           pipeline: "Outreach",
           stage: "Cold List",
           lead_source: "Cold Outreach",
+          business_id: ADMIN_BUSINESS_ID,
         });
       }
 

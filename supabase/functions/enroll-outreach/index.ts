@@ -141,8 +141,20 @@ serve(async (req) => {
       }
 
       // Resolve {{my_name}} etc. against this contact's business settings.
-      // Without this, templates land in message_queue with literal mustache braces.
-      const settings = await getSettings(supabase, contact.business_id);
+      // Falls back to any settings row if business_id is null on the contact —
+      // this happens for legacy imports before CSVImportDialog started setting it.
+      let settings: Record<string, unknown>;
+      if (contact.business_id) {
+        settings = await getSettings(supabase, contact.business_id);
+      } else {
+        const { data: anySettings } = await supabase
+          .from("settings")
+          .select("*")
+          .not("business_id", "is", null)
+          .limit(1)
+          .maybeSingle();
+        settings = (anySettings as Record<string, unknown>) ?? {};
+      }
 
       // Only queue step 1. Each subsequent step is queued by cron-message-sender
       // after the previous step actually sends — so follow-up timing is relative

@@ -170,11 +170,23 @@ async function getSettingsCached(
 ): Promise<Record<string, unknown>> {
   const key = businessId ?? "__null__";
   if (settingsCache[key]) return settingsCache[key];
-  const base = supabase.from("settings").select("*");
-  const { data } = businessId
-    ? await base.eq("business_id", businessId).maybeSingle()
-    : await base.is("business_id", null).limit(1).maybeSingle();
-  settingsCache[key] = (data as Record<string, unknown>) ?? {};
+  let data: Record<string, unknown> | null = null;
+  if (businessId) {
+    const res = await supabase.from("settings").select("*").eq("business_id", businessId).maybeSingle();
+    data = (res.data as Record<string, unknown>) ?? null;
+  }
+  // Fallback: any non-null business_id (admin's row). Used when a contact has no
+  // business_id set — template resolution would otherwise return empty strings.
+  if (!data) {
+    const res = await supabase
+      .from("settings")
+      .select("*")
+      .not("business_id", "is", null)
+      .limit(1)
+      .maybeSingle();
+    data = (res.data as Record<string, unknown>) ?? null;
+  }
+  settingsCache[key] = data ?? {};
   return settingsCache[key];
 }
 

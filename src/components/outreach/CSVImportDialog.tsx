@@ -228,8 +228,8 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
           full_name: row.name,
           phone: row.phone,
           email: row.email ?? null,
-          pipeline: "sales",
-          stage: "Lead In",
+          pipeline: "Outreach",
+          stage: "Cold List",
           lead_source: "Cold Outreach",
         });
       }
@@ -251,7 +251,7 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
             description:
               result.skipped.length > 0
                 ? skipSummary(result.skipped)
-                : "Find them in Contacts, then enroll in SMS Outreach.",
+                : "Find them in the Cold List column, then bulk-enroll.",
           },
         );
         setCsvText("");

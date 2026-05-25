@@ -6,12 +6,14 @@ import { logActivity } from "@/hooks/useActivityLog";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { GripVertical, MoreHorizontal, ThumbsUp, CalendarCheck, Ban, MessageSquareOff, Search } from "lucide-react";
+import { GripVertical, MoreHorizontal, ThumbsUp, CalendarCheck, Ban, MessageSquareOff, Search, MessageSquarePlus, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAddToDNC } from "@/hooks/useDNC";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import EnrollDialog from "@/components/outreach/EnrollDialog";
 
 const ANGLE_LABEL: Record<string, string> = {
   free_website: "Free Website",
@@ -66,6 +68,17 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
   const addToDNC = useAddToDNC();
   const [angleFilter, setAngleFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [enrollOpen, setEnrollOpen] = useState(false);
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const clearSelection = () => setSelected(new Set());
 
   const filtered = useMemo(() => {
     const s = search.toLowerCase();
@@ -179,6 +192,23 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
         </div>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex items-center justify-between gap-3 bg-secondary/60 rounded-2xl px-4 py-2.5 mb-3">
+          <div className="text-sm">
+            <span className="font-medium">{selected.size}</span> selected
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => setEnrollOpen(true)}>
+              <MessageSquarePlus className="w-4 h-4 mr-1" strokeWidth={1.5} />
+              Enroll
+            </Button>
+            <Button size="sm" variant="ghost" onClick={clearSelection}>
+              <X className="w-4 h-4" strokeWidth={1.5} />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex gap-3 overflow-x-auto flex-1 pb-4">
           {OUTREACH_STAGES.map((s) => (
@@ -188,13 +218,31 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-3 md:gap-4 overflow-x-auto flex-1 pb-4 snap-x snap-mandatory md:snap-none -mx-4 px-4 md:mx-0 md:px-0">
-            {columns.map((col) => (
+            {columns.map((col) => {
+              const allColSelected =
+                col.contacts.length > 0 && col.contacts.every((c) => selected.has(c.id));
+              const toggleCol = () =>
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (allColSelected) col.contacts.forEach((c) => next.delete(c.id));
+                  else col.contacts.forEach((c) => next.add(c.id));
+                  return next;
+                });
+              return (
               <div key={col.key} className="w-64 md:w-72 shrink-0 snap-start flex flex-col">
                 <div className="flex items-center justify-between mb-3 px-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <h3 className="text-sm font-medium text-foreground truncate">{col.label}</h3>
                     <span className="text-xs text-muted-foreground tabular-nums shrink-0">{col.contacts.length}</span>
                   </div>
+                  {col.contacts.length > 0 && (
+                    <button
+                      onClick={toggleCol}
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      {allColSelected ? "Clear" : "Select all"}
+                    </button>
+                  )}
                 </div>
 
                 <Droppable droppableId={col.key}>
@@ -209,6 +257,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                       {col.contacts.map((contact, idx) => {
                         const inbound = lastInbound?.get(contact.id);
                         const angle = contact.outreach_angle ?? "";
+                        const isSelected = selected.has(contact.id);
                         return (
                           <Draggable key={contact.id} draggableId={contact.id} index={idx}>
                             {(provided, snapshot) => (
@@ -218,12 +267,22 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                                 className={`group ${snapshot.isDragging ? "z-50" : ""}`}
                               >
                                 <div
-                                  className={`bg-card border border-border/60 rounded-xl cursor-pointer transition-all ${
-                                    snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : "hover:bg-secondary/30"
-                                  }`}
+                                  className={`bg-card border rounded-xl cursor-pointer transition-all ${
+                                    isSelected ? "border-primary/60 bg-secondary/40" : "border-border/60 hover:bg-secondary/30"
+                                  } ${snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : ""}`}
                                   onClick={() => navigate(`/contacts/${contact.id}`)}
                                 >
                                   <div className="p-3 flex items-start gap-2">
+                                    <div
+                                      onClick={(e) => { e.stopPropagation(); toggleOne(contact.id); }}
+                                      className="mt-0.5 shrink-0"
+                                    >
+                                      <Checkbox
+                                        checked={isSelected}
+                                        onCheckedChange={() => toggleOne(contact.id)}
+                                        aria-label={`Select ${contact.full_name}`}
+                                      />
+                                    </div>
                                     <div
                                       {...provided.dragHandleProps}
                                       className="hidden md:block mt-0.5 opacity-0 group-hover:opacity-50 transition-opacity cursor-grab"
@@ -290,10 +349,18 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                   )}
                 </Droppable>
               </div>
-            ))}
+              );
+            })}
           </div>
         </DragDropContext>
       )}
+
+      <EnrollDialog
+        open={enrollOpen}
+        onOpenChange={setEnrollOpen}
+        contactIds={[...selected]}
+        onEnrolled={clearSelection}
+      />
     </div>
   );
 }

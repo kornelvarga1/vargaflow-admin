@@ -115,6 +115,7 @@ serve(async (req) => {
         .from("contacts")
         .update({
           pipeline: OUTREACH_PIPELINE,
+          stage: "Sequence Active",
           outreach_angle: workflow,
           stage_entered_at: new Date().toISOString(),
         })

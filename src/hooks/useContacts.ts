@@ -34,6 +34,8 @@ export const ONBOARDING_STAGES = [
 ] as const;
 
 export const OUTREACH_STAGES = [
+  { key: "Cold List", label: "Cold List" },
+  { key: "Sequence Active", label: "Sequence Active" },
   { key: "Replied", label: "Replied" },
   { key: "Interested – Positive Reply", label: "Interested" },
   { key: "Follow-up", label: "Follow-up" },

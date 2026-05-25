@@ -6,6 +6,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const OUTREACH_PIPELINE = "Outreach";
+// Admin's business_id — used as fallback when a contact has business_id=NULL,
+// so we never accidentally pick up a test-client settings row.
+const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
 
 const SEQUENCE_BY_ANGLE: Record<string, string> = {
   free_website: "Outreach — Free Website Incentive",
@@ -141,20 +144,11 @@ serve(async (req) => {
       }
 
       // Resolve {{my_name}} etc. against this contact's business settings.
-      // Falls back to any settings row if business_id is null on the contact —
-      // this happens for legacy imports before CSVImportDialog started setting it.
-      let settings: Record<string, unknown>;
-      if (contact.business_id) {
-        settings = await getSettings(supabase, contact.business_id);
-      } else {
-        const { data: anySettings } = await supabase
-          .from("settings")
-          .select("*")
-          .not("business_id", "is", null)
-          .limit(1)
-          .maybeSingle();
-        settings = (anySettings as Record<string, unknown>) ?? {};
-      }
+      // Falls back to ADMIN_BUSINESS_ID when contact.business_id is NULL (the
+      // admin convention) — never pick a random row, that could land on a test
+      // client's settings (e.g. "Mike / Arizona Roofing Pro").
+      const settingsBid = contact.business_id ?? ADMIN_BUSINESS_ID;
+      const settings = await getSettings(supabase, settingsBid);
 
       // Only queue step 1. Each subsequent step is queued by cron-message-sender
       // after the previous step actually sends — so follow-up timing is relative

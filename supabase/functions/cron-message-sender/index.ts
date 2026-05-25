@@ -15,6 +15,9 @@ const HEALTHCHECKS_URL = Deno.env.get("HEALTHCHECKS_URL");
 
 const MAX_RETRIES = 3;
 const OUTREACH_PIPELINE = "Outreach";
+// Admin's business_id — used as fallback when a contact/message has business_id=NULL.
+// Never pick "any" settings row by accident — that could land on a test client.
+const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
 
 // Inlined from _shared/outreach.ts — kept here because this function is deployed
 // without a shared-folder bundle. Keep signatures in sync with _shared/outreach.ts.
@@ -168,26 +171,15 @@ async function getSettingsCached(
   supabase: ReturnType<typeof createClient>,
   businessId: string | null,
 ): Promise<Record<string, unknown>> {
-  const key = businessId ?? "__null__";
-  if (settingsCache[key]) return settingsCache[key];
-  let data: Record<string, unknown> | null = null;
-  if (businessId) {
-    const res = await supabase.from("settings").select("*").eq("business_id", businessId).maybeSingle();
-    data = (res.data as Record<string, unknown>) ?? null;
-  }
-  // Fallback: any non-null business_id (admin's row). Used when a contact has no
-  // business_id set — template resolution would otherwise return empty strings.
-  if (!data) {
-    const res = await supabase
-      .from("settings")
-      .select("*")
-      .not("business_id", "is", null)
-      .limit(1)
-      .maybeSingle();
-    data = (res.data as Record<string, unknown>) ?? null;
-  }
-  settingsCache[key] = data ?? {};
-  return settingsCache[key];
+  const lookupBid = businessId ?? ADMIN_BUSINESS_ID;
+  if (settingsCache[lookupBid]) return settingsCache[lookupBid];
+  const { data } = await supabase
+    .from("settings")
+    .select("*")
+    .eq("business_id", lookupBid)
+    .maybeSingle();
+  settingsCache[lookupBid] = (data as Record<string, unknown>) ?? {};
+  return settingsCache[lookupBid];
 }
 
 async function getSequenceStepCount(
@@ -299,31 +291,18 @@ async function getTwilioNumber(
   supabase: ReturnType<typeof createClient>,
   business_id: string | null
 ): Promise<string | null> {
-  const key = business_id ?? NULL_BIZ_KEY;
-  if (twilioNumberCache[key]) return twilioNumberCache[key];
-
-  let number: string | null = null;
-  if (business_id) {
-    const { data } = await supabase
-      .from("settings")
-      .select("twilio_phone_number")
-      .eq("business_id", business_id)
-      .maybeSingle();
-    number = (data as any)?.twilio_phone_number ?? null;
-  }
-  // Fallback for null business_id (admin's contacts use NULL by convention) —
-  // grab any settings row with a configured number rather than relying on env var.
-  if (!number) {
-    const { data } = await supabase
-      .from("settings")
-      .select("twilio_phone_number")
-      .not("business_id", "is", null)
-      .not("twilio_phone_number", "is", null)
-      .limit(1)
-      .maybeSingle();
-    number = (data as any)?.twilio_phone_number ?? null;
-  }
-  if (number) twilioNumberCache[key] = number;
+  // NULL business_id (admin convention) routes to ADMIN_BUSINESS_ID's Twilio
+  // number — never fall through to "any settings row" since that risks sending
+  // from a test client's number.
+  const lookupBid = business_id ?? ADMIN_BUSINESS_ID;
+  if (twilioNumberCache[lookupBid]) return twilioNumberCache[lookupBid];
+  const { data } = await supabase
+    .from("settings")
+    .select("twilio_phone_number")
+    .eq("business_id", lookupBid)
+    .maybeSingle();
+  const number = (data as any)?.twilio_phone_number ?? null;
+  if (number) twilioNumberCache[lookupBid] = number;
   return number;
 }
 

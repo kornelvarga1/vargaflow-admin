@@ -90,6 +90,35 @@ interface PacingDecision {
   paceIntervalSeconds: number;
 }
 
+// Inlined from _shared/utils.ts resolveTemplate. Keep in sync.
+function resolveTemplate(
+  template: string,
+  contact: Record<string, any>,
+  settings: Record<string, any>,
+): string {
+  const vars: Record<string, string> = {
+    contact_first_name: contact?.full_name?.split(" ")[0] ?? "",
+    contact_name: contact?.full_name ?? "",
+    contact_phone: contact?.phone ?? "",
+    contact_email: contact?.email ?? "",
+    contact_company: settings?.company_name ?? "",
+    my_name: settings?.my_name ?? "",
+    my_phone: settings?.my_phone ?? "",
+    my_email: settings?.my_email ?? "",
+    company_name: settings?.company_name ?? "",
+    website_url: settings?.website_url ?? "",
+    software_explanation_video: settings?.software_explanation_video ?? "",
+    testimonials_link: settings?.testimonials_link ?? "",
+    case_study_link: settings?.case_study_link ?? "",
+    demo_calendar_link: settings?.demo_calendar_link ?? "",
+    launch_call_calendar_link: settings?.launch_call_calendar_link ?? "",
+    onboarding_form_link: settings?.onboarding_form_link ?? "",
+    instagram_url: settings?.instagram_url ?? "",
+    gmb_tutorial_link: settings?.gmb_tutorial_link ?? "",
+  };
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
+}
+
 function computeOutreachBudget(cfg: PacingConfig, st: PacingState): PacingDecision {
   const paceIntervalSeconds =
     cfg.dailyCap > 0 ? Math.max(1, Math.floor(cfg.windowSeconds / cfg.dailyCap)) : 0;
@@ -131,6 +160,24 @@ const NULL_BIZ_KEY = "__null_business__";
 // Cache sequence step counts per cron run so we don't re-query on every send.
 const stepCountCache: Record<string, number> = {};
 
+// Cache settings rows by business_id within a single cron run (used by template
+// resolution when queueing the next sequence step after a successful send).
+const settingsCache: Record<string, Record<string, unknown>> = {};
+
+async function getSettingsCached(
+  supabase: ReturnType<typeof createClient>,
+  businessId: string | null,
+): Promise<Record<string, unknown>> {
+  const key = businessId ?? "__null__";
+  if (settingsCache[key]) return settingsCache[key];
+  const base = supabase.from("settings").select("*");
+  const { data } = businessId
+    ? await base.eq("business_id", businessId).maybeSingle()
+    : await base.is("business_id", null).limit(1).maybeSingle();
+  settingsCache[key] = (data as Record<string, unknown>) ?? {};
+  return settingsCache[key];
+}
+
 async function getSequenceStepCount(
   supabase: ReturnType<typeof createClient>,
   sequenceId: string,
@@ -142,6 +189,79 @@ async function getSequenceStepCount(
     .eq("sequence_id", sequenceId);
   stepCountCache[sequenceId] = count ?? 0;
   return count ?? 0;
+}
+
+// Queue the next step in this contact's sequence (if any) using the previous step's
+// actual send time as the anchor. Returns silently if there's no next step or the
+// contact_sequence is no longer active.
+async function queueNextStep(
+  supabase: ReturnType<typeof createClient>,
+  msg: any,
+): Promise<void> {
+  if (!msg.contact_sequence_id) return;
+  const justSentOrder = Number(msg.metadata?.step_order ?? 0);
+  if (justSentOrder <= 0) return;
+
+  const { data: cs } = await supabase
+    .from("contact_sequences")
+    .select("sequence_id, status")
+    .eq("id", msg.contact_sequence_id)
+    .maybeSingle();
+  const seqRow = cs as { sequence_id: string; status: string } | null;
+  if (!seqRow || seqRow.status !== "active") return;
+
+  // Look up the next step + the just-sent step in one go so we can compute the
+  // gap-from-previous (sequence_steps stores delays as cumulative-from-enrollment).
+  const { data: stepsData } = await supabase
+    .from("sequence_steps")
+    .select("step_order, delay_hours, delay_minutes, message_type, message_template")
+    .eq("sequence_id", seqRow.sequence_id)
+    .in("step_order", [justSentOrder, justSentOrder + 1]);
+  const steps = (stepsData ?? []) as Array<{
+    step_order: number;
+    delay_hours: number | null;
+    delay_minutes: number | null;
+    message_type: string;
+    message_template: string;
+  }>;
+  const current = steps.find((s) => s.step_order === justSentOrder);
+  const next = steps.find((s) => s.step_order === justSentOrder + 1);
+  if (!next) return; // sequence done
+
+  const currentTotalMin = (current?.delay_hours ?? 0) * 60 + (current?.delay_minutes ?? 0);
+  const nextTotalMin = (next.delay_hours ?? 0) * 60 + (next.delay_minutes ?? 0);
+  const deltaMin = Math.max(0, nextTotalMin - currentTotalMin);
+  const sendAt = new Date(Date.now() + deltaMin * 60_000);
+
+  // Fetch fresh contact for template resolution (msg.contact is a partial join).
+  const { data: contactRow } = await supabase
+    .from("contacts")
+    .select("full_name, phone, email")
+    .eq("id", msg.contact_id)
+    .maybeSingle();
+  const settings = await getSettingsCached(supabase, msg.business_id ?? null);
+  const resolved = resolveTemplate(next.message_template, contactRow ?? {}, settings);
+
+  const { error: insErr } = await supabase.from("message_queue").insert({
+    contact_id: msg.contact_id,
+    contact_sequence_id: msg.contact_sequence_id,
+    business_id: msg.business_id,
+    message_type: next.message_type,
+    message_content: resolved,
+    to_phone: msg.to_phone,
+    scheduled_at: sendAt.toISOString(),
+    status: "pending",
+    metadata: { to: msg.to_phone, step_order: justSentOrder + 1 },
+  });
+  if (insErr) {
+    console.error(
+      `[cron] queueNextStep insert FAILED for contact ${msg.contact_id} step ${justSentOrder + 1}: ${insErr.message}`,
+    );
+  } else {
+    console.log(
+      `[cron] queued step ${justSentOrder + 1} for contact ${msg.contact_id} at ${sendAt.toISOString()}`,
+    );
+  }
 }
 
 // Increment current_step on the contact_sequences row; mark completed when all steps sent.
@@ -324,7 +444,9 @@ serve(async (_req) => {
     const withinOutreachWindow = isWithinSendWindow(sendWindow, nowDate, outreachTz);
     const dayAllowed = isAllowedDay(allowedDays, nowDate, outreachTz);
 
-    // Pacing state: count today's outreach sends + find the most-recent one (to enforce the spacing).
+    // Pacing state: count today's FRESH outreach sends (step 1 only) + find the most-recent
+    // one. Follow-ups don't count toward the cap and don't reset the pacing clock — only
+    // first-touch sends do.
     let outreachSentToday = 0;
     let outreachSentLastHour = 0;
     let lastSentTodayMs: number | null = null;
@@ -339,6 +461,7 @@ serve(async (_req) => {
         .eq("message_type", "sms")
         .eq("status", "sent")
         .eq("contact.pipeline", OUTREACH_PIPELINE)
+        .eq("metadata->>step_order", "1")
         .gte("sent_at", startOfTodayIso);
       outreachSentToday = todayCount ?? 0;
 
@@ -348,6 +471,7 @@ serve(async (_req) => {
         .eq("message_type", "sms")
         .eq("status", "sent")
         .eq("contact.pipeline", OUTREACH_PIPELINE)
+        .eq("metadata->>step_order", "1")
         .gte("sent_at", hourAgoIso);
       outreachSentLastHour = hourCount ?? 0;
 
@@ -357,6 +481,7 @@ serve(async (_req) => {
         .eq("message_type", "sms")
         .eq("status", "sent")
         .eq("contact.pipeline", OUTREACH_PIPELINE)
+        .eq("metadata->>step_order", "1")
         .gte("sent_at", startOfTodayIso)
         .order("sent_at", { ascending: false })
         .limit(1)
@@ -433,6 +558,10 @@ serve(async (_req) => {
       processingIds.push(msg.id);
 
       const isOutreach = msg.contact?.pipeline === OUTREACH_PIPELINE;
+      const stepOrder = Number(msg.metadata?.step_order ?? 0);
+      // First-touch send: only these are gated by send window, day filter, daily cap,
+      // and pacing. Follow-ups (step 2, 3) bypass — they fire whenever scheduled.
+      const isFirstSend = isOutreach && stepOrder === 1;
       const releaseProcessing = (newStatus: string) =>
         supabase.from("message_queue").update({ status: newStatus }).eq("id", msg.id);
       const dropProcessingId = () => {
@@ -492,26 +621,29 @@ serve(async (_req) => {
         }
       }
 
-      // Outreach-only guardrails (SMS). CRM flows bypass these entirely.
+      // Outreach guardrails (SMS). CRM flows bypass entirely.
+      // DNC applies to ALL outreach sends (fresh + follow-ups).
+      // Window / day / pacing / cap apply to first-touch sends ONLY — follow-ups
+      // fire whenever their scheduled_at hits, even outside the send window.
       if (isOutreach && (msg.message_type === "sms" || msg.message_type === "internal_sms")) {
-        // 1. Send window — leave pending so it retries on a later tick inside the window.
-        if (!withinOutreachWindow) {
-          await releaseProcessing("pending");
-          dropProcessingId();
-          continue;
-        }
-        // 2. Per-hour rate cap — leave pending; next tick will reassess budget.
-        if (outreachBudget <= 0) {
-          await releaseProcessing("pending");
-          dropProcessingId();
-          continue;
-        }
-        // 3. DNC suppression (fail-closed).
         const toCheck = msg.to_phone ?? msg.metadata?.to;
         if (toCheck && (await isDNC(supabase, toCheck))) {
           await releaseProcessing("skipped_dnc");
           dropProcessingId();
           continue;
+        }
+
+        if (isFirstSend) {
+          if (!withinOutreachWindow || !dayAllowed) {
+            await releaseProcessing("pending");
+            dropProcessingId();
+            continue;
+          }
+          if (outreachBudget <= 0) {
+            await releaseProcessing("pending");
+            dropProcessingId();
+            continue;
+          }
         }
       }
 
@@ -528,7 +660,8 @@ serve(async (_req) => {
 
           await sendSMS(to, from, msg.message_content);
 
-          if (isOutreach) outreachBudget--;
+          // Only first-touch sends consume the daily cap.
+          if (isFirstSend) outreachBudget--;
 
           await supabase
             .from("message_queue")
@@ -610,6 +743,17 @@ serve(async (_req) => {
 
         } else {
           throw new Error(`Unknown message_type: ${msg.message_type}`);
+        }
+
+        // For outreach sequences: schedule the next step relative to THIS step's
+        // actual send time. Do this BEFORE advanceContactSequence so failure here
+        // doesn't leave us with current_step bumped but no next message queued.
+        if (isOutreach && msg.contact_sequence_id) {
+          try {
+            await queueNextStep(supabase, msg);
+          } catch (qErr) {
+            console.error(`queueNextStep failed for contact ${msg.contact_id}:`, qErr);
+          }
         }
 
         // Advance contact_sequence progress (increment current_step, mark completed when done).

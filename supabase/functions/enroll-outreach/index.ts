@@ -144,25 +144,24 @@ serve(async (req) => {
       // Without this, templates land in message_queue with literal mustache braces.
       const settings = await getSettings(supabase, contact.business_id);
 
-      const now = new Date();
-      const rows = steps.map((step: any) => {
-        const sendAt = new Date(now);
-        sendAt.setHours(sendAt.getHours() + (step.delay_hours ?? 0));
-        sendAt.setMinutes(sendAt.getMinutes() + (step.delay_minutes ?? 0));
-        return {
-          contact_id: id,
-          contact_sequence_id: cs.id,
-          business_id: contact.business_id,
-          message_type: step.message_type,
-          message_content: resolveTemplate(step.message_template, contact, settings),
-          to_phone: contact.phone,
-          scheduled_at: sendAt.toISOString(),
-          status: "pending",
-          metadata: { to: contact.phone },
-        };
+      // Only queue step 1. Each subsequent step is queued by cron-message-sender
+      // after the previous step actually sends — so follow-up timing is relative
+      // to send time, not enrollment time, and the daily cap only governs first sends.
+      const step1 = steps[0];
+      const sendAt = new Date();
+      sendAt.setHours(sendAt.getHours() + (step1.delay_hours ?? 0));
+      sendAt.setMinutes(sendAt.getMinutes() + (step1.delay_minutes ?? 0));
+      const { error: queueErr } = await supabase.from("message_queue").insert({
+        contact_id: id,
+        contact_sequence_id: cs.id,
+        business_id: contact.business_id,
+        message_type: step1.message_type,
+        message_content: resolveTemplate(step1.message_template, contact, settings),
+        to_phone: contact.phone,
+        scheduled_at: sendAt.toISOString(),
+        status: "pending",
+        metadata: { to: contact.phone, step_order: 1 },
       });
-
-      const { error: queueErr } = await supabase.from("message_queue").insert(rows);
       if (queueErr) {
         await supabase
           .from("contact_sequences")

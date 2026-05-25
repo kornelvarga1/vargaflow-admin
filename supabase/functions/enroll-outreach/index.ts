@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { authErrorResponse, requireAdmin } from "../_shared/utils.ts";
+import { authErrorResponse, getSettings, requireAdmin, resolveTemplate } from "../_shared/utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -139,6 +139,10 @@ serve(async (req) => {
         continue;
       }
 
+      // Resolve {{my_name}} etc. against this contact's business settings.
+      // Without this, templates land in message_queue with literal mustache braces.
+      const settings = await getSettings(supabase, contact.business_id);
+
       const now = new Date();
       const rows = steps.map((step: any) => {
         const sendAt = new Date(now);
@@ -149,7 +153,7 @@ serve(async (req) => {
           contact_sequence_id: cs.id,
           business_id: contact.business_id,
           message_type: step.message_type,
-          message_content: step.message_template,
+          message_content: resolveTemplate(step.message_template, contact, settings),
           to_phone: contact.phone,
           scheduled_at: sendAt.toISOString(),
           status: "pending",

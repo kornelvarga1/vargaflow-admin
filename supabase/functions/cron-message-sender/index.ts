@@ -6,7 +6,8 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TWILIO_SID = Deno.env.get("TWILIO_ACCOUNT_SID")!;
 const TWILIO_AUTH = Deno.env.get("TWILIO_AUTH_TOKEN")!;
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY")!;
-const OUTREACH_TZ = Deno.env.get("OUTREACH_TIMEZONE") ?? "America/New_York";
+// Fallback only — settings.outreach_timezone wins when present.
+const OUTREACH_TZ_FALLBACK = Deno.env.get("OUTREACH_TIMEZONE") ?? "America/New_York";
 // Healthchecks.io heartbeat URL — pinged at end of every successful run.
 // If healthchecks.io misses pings beyond grace period, it alerts. Optional;
 // leave unset to disable monitoring.
@@ -30,6 +31,81 @@ function isWithinSendWindow(
     }).format(now),
   );
   return hour >= settings.send_window_start && hour < settings.send_window_end;
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+};
+
+function isAllowedDay(
+  allowedDays: number[] | null | undefined,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (!allowedDays || allowedDays.length === 0) return false;
+  const weekdayShort = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    timeZone,
+  }).format(now);
+  const day = WEEKDAY_INDEX[weekdayShort];
+  return day !== undefined && allowedDays.includes(day);
+}
+
+function dateAtHourInTz(now: Date, hour: number, timeZone: string): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const datePart = `${get("year")}-${get("month")}-${get("day")}`;
+  const naive = new Date(`${datePart}T${String(hour).padStart(2, "0")}:00:00Z`);
+  const seenHour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone }).format(naive),
+  );
+  let delta = seenHour - hour;
+  if (delta > 12) delta -= 24;
+  if (delta < -12) delta += 24;
+  return new Date(naive.getTime() - delta * 3600_000);
+}
+
+function startOfDayInTz(now: Date, timeZone: string): Date {
+  return dateAtHourInTz(now, 0, timeZone);
+}
+
+interface PacingConfig {
+  dailyCap: number;
+  windowSeconds: number;
+  hourlyThrottle: number | null;
+}
+interface PacingState {
+  sentToday: number;
+  sentLastHour: number;
+  secondsSinceLastSendToday: number | null;
+}
+interface PacingDecision {
+  allowed: 0 | 1;
+  reason: string;
+  paceIntervalSeconds: number;
+}
+
+function computeOutreachBudget(cfg: PacingConfig, st: PacingState): PacingDecision {
+  const paceIntervalSeconds =
+    cfg.dailyCap > 0 ? Math.max(1, Math.floor(cfg.windowSeconds / cfg.dailyCap)) : 0;
+  if (cfg.dailyCap <= 0) return { allowed: 0, reason: "daily_cap_zero", paceIntervalSeconds };
+  if (st.sentToday >= cfg.dailyCap) return { allowed: 0, reason: "daily_cap_hit", paceIntervalSeconds };
+  if (st.secondsSinceLastSendToday !== null && st.secondsSinceLastSendToday < paceIntervalSeconds) {
+    return {
+      allowed: 0,
+      reason: `pacing(${st.secondsSinceLastSendToday}s<${paceIntervalSeconds}s)`,
+      paceIntervalSeconds,
+    };
+  }
+  if (cfg.hourlyThrottle !== null && cfg.hourlyThrottle > 0 && st.sentLastHour >= cfg.hourlyThrottle) {
+    return { allowed: 0, reason: "hourly_throttle_hit", paceIntervalSeconds };
+  }
+  return { allowed: 1, reason: "ok", paceIntervalSeconds };
 }
 
 // Fail-closed: on lookup error, treat as DNC.
@@ -215,13 +291,18 @@ serve(async (_req) => {
   try {
     const now = new Date().toISOString();
 
-    // Load outreach settings (send window + per-hour rate cap). Single-user tool: first row wins.
+    // Load outreach pacing config. Single-user tool: first row wins.
     let sendWindow = { send_window_start: 9, send_window_end: 19 };
-    let ratePerHour = 60;
+    let dailyCap = 20;
+    let allowedDays: number[] = [1, 2, 3, 4, 5];
+    let outreachTz = OUTREACH_TZ_FALLBACK;
+    let hourlyThrottle: number | null = null;
     try {
       const { data: settingsRow } = await supabase
         .from("settings")
-        .select("send_window_start, send_window_end, outbound_rate_per_hour")
+        .select(
+          "send_window_start, send_window_end, daily_send_cap, send_days_of_week, outreach_timezone, hourly_throttle",
+        )
         .limit(1)
         .maybeSingle();
       if (settingsRow) {
@@ -229,30 +310,80 @@ serve(async (_req) => {
           send_window_start: settingsRow.send_window_start ?? 9,
           send_window_end: settingsRow.send_window_end ?? 19,
         };
-        ratePerHour = settingsRow.outbound_rate_per_hour ?? 60;
+        dailyCap = settingsRow.daily_send_cap ?? 20;
+        allowedDays = settingsRow.send_days_of_week ?? [1, 2, 3, 4, 5];
+        outreachTz = settingsRow.outreach_timezone ?? OUTREACH_TZ_FALLBACK;
+        hourlyThrottle =
+          typeof settingsRow.hourly_throttle === "number" ? settingsRow.hourly_throttle : null;
       }
     } catch (e) {
       console.warn("[cron] settings fetch failed, using defaults:", e);
     }
 
-    const withinOutreachWindow = isWithinSendWindow(sendWindow, new Date(), OUTREACH_TZ);
+    const nowDate = new Date();
+    const withinOutreachWindow = isWithinSendWindow(sendWindow, nowDate, outreachTz);
+    const dayAllowed = isAllowedDay(allowedDays, nowDate, outreachTz);
 
-    // Count outreach SMS sent in the last hour so we can cap how many more we send this tick.
+    // Pacing state: count today's outreach sends + find the most-recent one (to enforce the spacing).
+    let outreachSentToday = 0;
     let outreachSentLastHour = 0;
-    {
-      const hourAgo = new Date(Date.now() - 3600_000).toISOString();
-      const { count } = await supabase
+    let lastSentTodayMs: number | null = null;
+    if (dayAllowed) {
+      const startOfToday = startOfDayInTz(nowDate, outreachTz);
+      const startOfTodayIso = startOfToday.toISOString();
+      const hourAgoIso = new Date(nowDate.getTime() - 3600_000).toISOString();
+
+      const { count: todayCount } = await supabase
         .from("message_queue")
         .select("id, contact:contacts!inner(pipeline)", { count: "exact", head: true })
         .eq("message_type", "sms")
         .eq("status", "sent")
         .eq("contact.pipeline", OUTREACH_PIPELINE)
-        .gte("sent_at", hourAgo);
-      outreachSentLastHour = count ?? 0;
+        .gte("sent_at", startOfTodayIso);
+      outreachSentToday = todayCount ?? 0;
+
+      const { count: hourCount } = await supabase
+        .from("message_queue")
+        .select("id, contact:contacts!inner(pipeline)", { count: "exact", head: true })
+        .eq("message_type", "sms")
+        .eq("status", "sent")
+        .eq("contact.pipeline", OUTREACH_PIPELINE)
+        .gte("sent_at", hourAgoIso);
+      outreachSentLastHour = hourCount ?? 0;
+
+      const { data: lastRow } = await supabase
+        .from("message_queue")
+        .select("sent_at, contact:contacts!inner(pipeline)")
+        .eq("message_type", "sms")
+        .eq("status", "sent")
+        .eq("contact.pipeline", OUTREACH_PIPELINE)
+        .gte("sent_at", startOfTodayIso)
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lastRow?.sent_at) lastSentTodayMs = new Date(lastRow.sent_at).getTime();
     }
-    let outreachBudget = Math.max(0, ratePerHour - outreachSentLastHour);
+
+    const windowSeconds = Math.max(
+      0,
+      (sendWindow.send_window_end - sendWindow.send_window_start) * 3600,
+    );
+    const pacingDecision = computeOutreachBudget(
+      { dailyCap, windowSeconds, hourlyThrottle },
+      {
+        sentToday: outreachSentToday,
+        sentLastHour: outreachSentLastHour,
+        secondsSinceLastSendToday:
+          lastSentTodayMs !== null ? Math.floor((nowDate.getTime() - lastSentTodayMs) / 1000) : null,
+      },
+    );
+
+    // Outreach can send 1 message this tick if all gates pass; otherwise 0 (messages stay pending).
+    let outreachBudget: number =
+      dayAllowed && withinOutreachWindow ? pacingDecision.allowed : 0;
+
     console.log(
-      `[cron] outreach window=${withinOutreachWindow} sentLastHr=${outreachSentLastHour} budget=${outreachBudget}/${ratePerHour}`,
+      `[cron] outreach tz=${outreachTz} day=${dayAllowed} window=${withinOutreachWindow} sentToday=${outreachSentToday}/${dailyCap} sentLastHr=${outreachSentLastHour} paceInterval=${pacingDecision.paceIntervalSeconds}s reason=${pacingDecision.reason} budget=${outreachBudget}`,
     );
 
     // Grab up to 50 pending messages due now, oldest first. Join contacts to know pipeline/angle per row.

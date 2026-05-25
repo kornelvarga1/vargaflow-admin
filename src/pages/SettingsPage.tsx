@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Plus, Trash2, Check, LogOut, Bell, Sun, Moon, Monitor } from "lucide-react";
 import { toast } from "sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTheme, type Theme } from "@/hooks/useTheme";
 import { requestNotificationPermission, getNotificationPermissionState } from "@/hooks/usePushNotifications";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
@@ -110,6 +117,241 @@ function useAllCustomValues() {
       return data as CustomValue[];
     },
   });
+}
+
+// ---- Outreach Sending Section ----
+
+// Day toggles: Mon-first (business convention) but the underlying ints use JS getDay() (0=Sun).
+const DAY_TOGGLES: { code: string; label: string; index: number }[] = [
+  { code: "Mo", label: "Mon", index: 1 },
+  { code: "Tu", label: "Tue", index: 2 },
+  { code: "We", label: "Wed", index: 3 },
+  { code: "Th", label: "Thu", index: 4 },
+  { code: "Fr", label: "Fri", index: 5 },
+  { code: "Sa", label: "Sat", index: 6 },
+  { code: "Su", label: "Sun", index: 0 },
+];
+
+const TIMEZONE_OPTIONS = [
+  { value: "America/New_York", label: "Eastern (ET)" },
+  { value: "America/Chicago", label: "Central (CT)" },
+  { value: "America/Denver", label: "Mountain (MT)" },
+  { value: "America/Phoenix", label: "Arizona (no DST)" },
+  { value: "America/Los_Angeles", label: "Pacific (PT)" },
+];
+
+interface OutreachConfig {
+  daily_send_cap: number;
+  send_window_start: number;
+  send_window_end: number;
+  send_days_of_week: number[];
+  outreach_timezone: string;
+  hourly_throttle: number | null;
+}
+
+function OutreachSendingSection() {
+  const qc = useQueryClient();
+  const { data: settings, isLoading } = useMySettings();
+  const [cfg, setCfg] = useState<OutreachConfig>({
+    daily_send_cap: 20,
+    send_window_start: 8,
+    send_window_end: 17,
+    send_days_of_week: [1, 2, 3, 4, 5],
+    outreach_timezone: "America/Chicago",
+    hourly_throttle: null,
+  });
+  const [hourlyText, setHourlyText] = useState("");
+
+  useEffect(() => {
+    if (!settings) return;
+    const s = settings as any;
+    const next: OutreachConfig = {
+      daily_send_cap: s.daily_send_cap ?? 20,
+      send_window_start: s.send_window_start ?? 8,
+      send_window_end: s.send_window_end ?? 17,
+      send_days_of_week: Array.isArray(s.send_days_of_week) ? s.send_days_of_week : [1, 2, 3, 4, 5],
+      outreach_timezone: s.outreach_timezone ?? "America/Chicago",
+      hourly_throttle:
+        typeof s.hourly_throttle === "number" ? s.hourly_throttle : null,
+    };
+    setCfg(next);
+    setHourlyText(next.hourly_throttle == null ? "" : String(next.hourly_throttle));
+  }, [settings]);
+
+  const persist = async (patch: Partial<OutreachConfig>) => {
+    try {
+      const { error } = await supabase
+        .from("settings")
+        .update(patch as any)
+        .eq("business_id", ADMIN_BUSINESS_ID);
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["my_settings"] });
+      toast.success("Saved");
+    } catch (e) {
+      toast.error("Failed to save");
+    }
+  };
+
+  const onCapBlur = () => {
+    const n = Math.max(0, Math.floor(Number(cfg.daily_send_cap) || 0));
+    if (n !== (settings as any)?.daily_send_cap) persist({ daily_send_cap: n });
+  };
+
+  const onWindowBlur = (which: "start" | "end") => {
+    const cur =
+      which === "start"
+        ? Math.max(0, Math.min(23, Math.floor(Number(cfg.send_window_start) || 0)))
+        : Math.max(0, Math.min(24, Math.floor(Number(cfg.send_window_end) || 0)));
+    const key = which === "start" ? "send_window_start" : "send_window_end";
+    if (cur !== (settings as any)?.[key]) persist({ [key]: cur } as Partial<OutreachConfig>);
+  };
+
+  const onDaysChange = (codes: string[]) => {
+    const next = DAY_TOGGLES.filter((d) => codes.includes(d.code))
+      .map((d) => d.index)
+      .sort((a, b) => a - b);
+    setCfg((c) => ({ ...c, send_days_of_week: next }));
+    persist({ send_days_of_week: next });
+  };
+
+  const onTimezoneChange = (val: string) => {
+    setCfg((c) => ({ ...c, outreach_timezone: val }));
+    persist({ outreach_timezone: val });
+  };
+
+  const onHourlyBlur = () => {
+    const raw = hourlyText.trim();
+    const next = raw === "" ? null : Math.max(0, Math.floor(Number(raw) || 0));
+    if (next !== cfg.hourly_throttle) persist({ hourly_throttle: next });
+  };
+
+  // Computed pace preview
+  const windowHours = Math.max(0, cfg.send_window_end - cfg.send_window_start);
+  let paceText = "";
+  if (cfg.daily_send_cap <= 0) {
+    paceText = "Pacing off (daily cap is 0).";
+  } else if (windowHours <= 0) {
+    paceText = "Send window has no hours — nothing will fire.";
+  } else {
+    const intervalSec = Math.floor((windowHours * 3600) / cfg.daily_send_cap);
+    const intervalMin = Math.max(1, Math.round(intervalSec / 60));
+    paceText = `${cfg.daily_send_cap}/day across ${windowHours}h ≈ 1 every ${intervalMin} min`;
+  }
+
+  const selectedCodes = DAY_TOGGLES.filter((d) => cfg.send_days_of_week.includes(d.index)).map((d) => d.code);
+
+  return (
+    <>
+      <SectionHeader>Outreach Sending</SectionHeader>
+      {isLoading ? (
+        <div className="flex justify-center py-6">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <GroupedList>
+          <div className="px-4 py-3 space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Daily send cap</Label>
+            <Input
+              type="number"
+              min={0}
+              value={String(cfg.daily_send_cap)}
+              onChange={(e) =>
+                setCfg((c) => ({ ...c, daily_send_cap: Number(e.target.value) }))
+              }
+              onBlur={onCapBlur}
+              className="bg-transparent border-0 px-0 h-9 focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
+            />
+            <p className="text-[11px] text-muted-foreground/80">{paceText}</p>
+          </div>
+
+          <div className="px-4 py-3 space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Send window (hours)</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min={0}
+                max={23}
+                value={String(cfg.send_window_start)}
+                onChange={(e) =>
+                  setCfg((c) => ({ ...c, send_window_start: Number(e.target.value) }))
+                }
+                onBlur={() => onWindowBlur("start")}
+                className="bg-transparent border-0 px-0 h-9 focus-visible:ring-0 focus-visible:ring-offset-0 text-base w-16"
+              />
+              <span className="text-muted-foreground text-sm">to</span>
+              <Input
+                type="number"
+                min={0}
+                max={24}
+                value={String(cfg.send_window_end)}
+                onChange={(e) =>
+                  setCfg((c) => ({ ...c, send_window_end: Number(e.target.value) }))
+                }
+                onBlur={() => onWindowBlur("end")}
+                className="bg-transparent border-0 px-0 h-9 focus-visible:ring-0 focus-visible:ring-offset-0 text-base w-16"
+              />
+              <span className="text-[11px] text-muted-foreground/80 ml-2">
+                in {cfg.outreach_timezone.replace("America/", "")}
+              </span>
+            </div>
+          </div>
+
+          <div className="px-4 py-3 space-y-2">
+            <Label className="text-xs text-muted-foreground">Allowed days</Label>
+            <ToggleGroup
+              type="multiple"
+              value={selectedCodes}
+              onValueChange={onDaysChange}
+              className="justify-start gap-1 rounded-lg bg-muted p-0.5 w-fit"
+            >
+              {DAY_TOGGLES.map((d) => (
+                <ToggleGroupItem
+                  key={d.code}
+                  value={d.code}
+                  aria-label={d.label}
+                  className="h-8 px-2.5 rounded-md text-xs text-muted-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm"
+                >
+                  {d.code}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+
+          <div className="px-4 py-3 space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Timezone</Label>
+            <Select value={cfg.outreach_timezone} onValueChange={onTimezoneChange}>
+              <SelectTrigger className="bg-transparent border-0 px-0 h-9 focus:ring-0 focus:ring-offset-0 text-base [&>span]:text-base">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="px-4 py-3 space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Hourly throttle (optional)</Label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="off"
+              value={hourlyText}
+              onChange={(e) => setHourlyText(e.target.value)}
+              onBlur={onHourlyBlur}
+              className="bg-transparent border-0 px-0 h-9 focus-visible:ring-0 focus-visible:ring-offset-0 text-base"
+            />
+            <p className="text-[11px] text-muted-foreground/80">
+              Safety cap on top of pacing. Leave blank to rely on distribution only.
+            </p>
+          </div>
+        </GroupedList>
+      )}
+    </>
+  );
 }
 
 // ---- Custom Values Section ----
@@ -435,6 +677,8 @@ export default function SettingsPage() {
           </div>
         ))
       )}
+
+      <OutreachSendingSection />
 
       <CustomValuesSection />
 

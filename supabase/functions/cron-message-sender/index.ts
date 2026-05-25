@@ -424,12 +424,15 @@ serve(async (_req) => {
     let outreachTz = OUTREACH_TZ_FALLBACK;
     let hourlyThrottle: number | null = null;
     try {
+      // CRITICAL: target ADMIN_BUSINESS_ID specifically. Without this filter, .limit(1)
+      // would race between rows (e.g. test client "Mike" with window 9-19 instead of
+      // admin's 10-13), bypassing the operator's configured send window entirely.
       const { data: settingsRow } = await supabase
         .from("settings")
         .select(
           "send_window_start, send_window_end, daily_send_cap, send_days_of_week, outreach_timezone, hourly_throttle",
         )
-        .limit(1)
+        .eq("business_id", ADMIN_BUSINESS_ID)
         .maybeSingle();
       if (settingsRow) {
         sendWindow = {

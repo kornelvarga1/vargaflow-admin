@@ -14,7 +14,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Upload } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { normalizePhone } from "@/lib/phone";
-import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -197,6 +196,10 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
       const existingPhones = new Set((existing ?? []).map((c) => c.phone));
       const dncPhones = new Set((dnc ?? []).map((d) => d.phone));
 
+      // business_id is intentionally omitted — admin's contacts live with NULL
+      // business_id per the existing app-wide convention (useContacts, dashboard,
+      // sequences page all filter on IS NULL). enroll-outreach + cron-message-sender
+      // fall back to admin's settings row when contact.business_id is null.
       const toInsert: {
         full_name: string;
         phone: string;
@@ -204,7 +207,6 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
         pipeline: string;
         stage: string;
         lead_source: string;
-        business_id: string;
       }[] = [];
 
       const seenInBatch = new Set<string>();
@@ -233,7 +235,6 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
           pipeline: "Outreach",
           stage: "Cold List",
           lead_source: "Cold Outreach",
-          business_id: ADMIN_BUSINESS_ID,
         });
       }
 

@@ -302,12 +302,27 @@ async function getTwilioNumber(
   const key = business_id ?? NULL_BIZ_KEY;
   if (twilioNumberCache[key]) return twilioNumberCache[key];
 
-  const base = supabase.from("settings").select("twilio_phone_number");
-  const { data } = business_id
-    ? await base.eq("business_id", business_id).maybeSingle()
-    : await base.is("business_id", null).limit(1).maybeSingle();
-
-  const number = (data as any)?.twilio_phone_number ?? null;
+  let number: string | null = null;
+  if (business_id) {
+    const { data } = await supabase
+      .from("settings")
+      .select("twilio_phone_number")
+      .eq("business_id", business_id)
+      .maybeSingle();
+    number = (data as any)?.twilio_phone_number ?? null;
+  }
+  // Fallback for null business_id (admin's contacts use NULL by convention) —
+  // grab any settings row with a configured number rather than relying on env var.
+  if (!number) {
+    const { data } = await supabase
+      .from("settings")
+      .select("twilio_phone_number")
+      .not("business_id", "is", null)
+      .not("twilio_phone_number", "is", null)
+      .limit(1)
+      .maybeSingle();
+    number = (data as any)?.twilio_phone_number ?? null;
+  }
   if (number) twilioNumberCache[key] = number;
   return number;
 }

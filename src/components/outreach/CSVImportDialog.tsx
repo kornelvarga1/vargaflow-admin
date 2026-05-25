@@ -33,8 +33,8 @@ interface ImportResult {
   skipped: { row: ParsedRow; reason: string }[];
 }
 
-/** Minimal CSV parser — handles quoted fields and commas inside quotes. */
-function parseCSV(text: string): string[][] {
+/** Minimal CSV/TSV parser — handles quoted fields and the separator inside quotes. */
+function parseDelimited(text: string, sep: string): string[][] {
   const rows: string[][] = [];
   let cur: string[] = [];
   let field = "";
@@ -52,7 +52,7 @@ function parseCSV(text: string): string[][] {
       }
     } else {
       if (ch === '"') inQuote = true;
-      else if (ch === ",") {
+      else if (ch === sep) {
         cur.push(field);
         field = "";
       } else if (ch === "\n" || ch === "\r") {
@@ -71,6 +71,15 @@ function parseCSV(text: string): string[][] {
     if (cur.length > 0 && !(cur.length === 1 && cur[0] === "")) rows.push(cur);
   }
   return rows;
+}
+
+/** Pick the most-likely separator from the first non-empty line.
+ *  Tab wins when present and at least as common as comma — covers paste-from-Sheets. */
+function detectSeparator(text: string): string {
+  const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0) ?? "";
+  const tabs = (firstLine.match(/\t/g) ?? []).length;
+  const commas = (firstLine.match(/,/g) ?? []).length;
+  return tabs > 0 && tabs >= commas ? "\t" : ",";
 }
 
 /** Normalize to E.164 (US default). Strips non-digits; prepends +1 for 10-digit; prepends + if missing. */
@@ -97,6 +106,39 @@ function detectColumns(header: string[]): { name: number; phone: number; email: 
   };
 }
 
+/** Content-based column sniffer for header-less pastes.
+ *  Phone = column with highest ratio of phone-shaped values (>=7 digits, mostly digits).
+ *  Email = column with @ symbols.
+ *  Name  = first remaining column with letters in most rows. */
+function sniffColumns(rows: string[][]): { name: number; phone: number; email: number } {
+  const colCount = Math.max(...rows.map((r) => r.length), 0);
+  const score = (predicate: (v: string) => boolean) =>
+    Array.from({ length: colCount }, (_, c) => {
+      const vals = rows.map((r) => (r[c] ?? "").trim()).filter((v) => v.length > 0);
+      if (vals.length === 0) return 0;
+      return vals.filter(predicate).length / vals.length;
+    });
+
+  const phoneScores = score((v) => {
+    const digits = v.replace(/\D/g, "");
+    return digits.length >= 7 && digits.length / v.length > 0.5;
+  });
+  const emailScores = score((v) => /@/.test(v));
+  const phoneIdx = phoneScores.indexOf(Math.max(...phoneScores));
+  const phone = phoneScores[phoneIdx] >= 0.5 ? phoneIdx : 1;
+  const emailMax = Math.max(...emailScores);
+  const email = emailMax >= 0.5 ? emailScores.indexOf(emailMax) : -1;
+
+  const nameScores = score((v) => /[A-Za-z]/.test(v));
+  let name = 0;
+  let best = -1;
+  for (let c = 0; c < colCount; c++) {
+    if (c === phone || c === email) continue;
+    if (nameScores[c] > best) { best = nameScores[c]; name = c; }
+  }
+  return { name, phone, email };
+}
+
 export default function CSVImportDialog({ open, onOpenChange }: Props) {
   const [csvText, setCsvText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -104,15 +146,13 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
 
   const preview = useMemo<ParsedRow[]>(() => {
     if (!csvText.trim()) return [];
-    const rows = parseCSV(csvText);
+    const rows = parseDelimited(csvText, detectSeparator(csvText));
     if (rows.length === 0) return [];
     const header = rows[0];
     const looksLikeHeader =
       header.some((h) => /name|phone|email|business|company/i.test(h));
     const dataRows = looksLikeHeader ? rows.slice(1) : rows;
-    const cols = looksLikeHeader
-      ? detectColumns(header)
-      : { name: 0, phone: 1, email: -1 };
+    const cols = looksLikeHeader ? detectColumns(header) : sniffColumns(dataRows);
 
     const out: ParsedRow[] = [];
     for (const r of dataRows) {
@@ -165,6 +205,7 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
         lead_source: string;
       }[] = [];
 
+      const seenInBatch = new Set<string>();
       for (const row of normalizedPreview) {
         if (!normalizePhone(row.phone)) {
           result.skipped.push({ row, reason: "invalid phone format" });
@@ -178,6 +219,11 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
           result.skipped.push({ row, reason: "phone already in contacts" });
           continue;
         }
+        if (seenInBatch.has(row.phone)) {
+          result.skipped.push({ row, reason: "duplicate within file" });
+          continue;
+        }
+        seenInBatch.add(row.phone);
         toInsert.push({
           full_name: row.name,
           phone: row.phone,
@@ -216,9 +262,11 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
         });
       }
     } catch (err) {
-      toast.error("Import failed", {
-        description: err instanceof Error ? err.message : String(err),
-      });
+      // Supabase PostgrestError isn't a JS Error — unwrap message/details/hint manually.
+      const e = err as { message?: string; details?: string; hint?: string; code?: string };
+      const desc = [e?.message, e?.details, e?.hint, e?.code].filter(Boolean).join(" · ")
+        || (err instanceof Error ? err.message : String(err));
+      toast.error("Import failed", { description: desc });
     } finally {
       setBusy(false);
     }
@@ -230,7 +278,7 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>Import CSV</DialogTitle>
           <DialogDescription>
-            Paste CSV or upload a file. Columns: name, phone (required), email (optional). Phone is normalized to E.164 (US default). DNC'd numbers and duplicates are skipped.
+            Paste from Sheets/Excel or upload a CSV. Columns: name, phone (required), email (optional). Phone is normalized to E.164 (US default). DNC'd numbers and duplicates are skipped.
           </DialogDescription>
         </DialogHeader>
 
@@ -246,7 +294,7 @@ export default function CSVImportDialog({ open, onOpenChange }: Props) {
             />
           </div>
           <div>
-            <Label htmlFor="csv-text" className="text-xs">Or paste CSV</Label>
+            <Label htmlFor="csv-text" className="text-xs">Or paste rows</Label>
             <Textarea
               id="csv-text"
               rows={6}

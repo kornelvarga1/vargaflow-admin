@@ -66,29 +66,6 @@ export default function Index() {
         )}
       </div>
 
-      {/* Pipeline breakdowns */}
-      {!statsLoading && (
-        <section className="mt-8">
-          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-1 mb-3">
-            Pipelines
-          </p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <PipelineCard
-              title="Sales"
-              stages={SALES_STAGES}
-              data={stats?.salesByStage || {}}
-              to="/pipeline/sales"
-            />
-            <PipelineCard
-              title="Onboarding"
-              stages={ONBOARDING_STAGES}
-              data={stats?.onboardingByStage || {}}
-              to="/pipeline/onboarding"
-            />
-          </div>
-        </section>
-      )}
-
       {/* Outreach stats */}
       {!statsLoading && (stats?.outreachEnrolled ?? 0) > 0 && (
         <section className="mt-8">
@@ -133,6 +110,29 @@ export default function Index() {
                 );
               })}
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Pipeline breakdowns */}
+      {!statsLoading && (
+        <section className="mt-8">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-1 mb-3">
+            Pipelines
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <PipelineCard
+              title="Sales"
+              stages={SALES_STAGES}
+              data={stats?.salesByStage || {}}
+              to="/pipeline/sales"
+            />
+            <PipelineCard
+              title="Onboarding"
+              stages={ONBOARDING_STAGES}
+              data={stats?.onboardingByStage || {}}
+              to="/pipeline/onboarding"
+            />
           </div>
         </section>
       )}

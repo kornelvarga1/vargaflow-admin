@@ -4,6 +4,16 @@ import NeedsAttentionSection from "@/components/dashboard/NeedsAttentionSection"
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
+
+const OUTREACH_STAGES = [
+  { key: "Cold List",                  label: "Cold List" },
+  { key: "Sequence Active",            label: "In Sequence" },
+  { key: "Replied",                    label: "Replied" },
+  { key: "Interested – Positive Reply",label: "Interested" },
+  { key: "Follow-up",                  label: "Follow-up" },
+  { key: "Appt Set",                   label: "Appt Set" },
+  { key: "Not Interested",             label: "Not Interested" },
+];
 import { Button } from "@/components/ui/button";
 import {
   Users,
@@ -75,6 +85,54 @@ export default function Index() {
               data={stats?.onboardingByStage || {}}
               to="/pipeline/onboarding"
             />
+          </div>
+        </section>
+      )}
+
+      {/* Outreach stats */}
+      {!statsLoading && (stats?.outreachEnrolled ?? 0) > 0 && (
+        <section className="mt-8">
+          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground px-1 mb-3">
+            Outreach
+          </p>
+          <div className="bg-card border border-border/60 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-medium text-sm text-foreground">Campaign performance</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{stats!.outreachEnrolled} enrolled</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-secondary/30 rounded-xl px-4 py-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Reply rate</p>
+                <p className="font-serif text-2xl text-foreground tabular-nums leading-none mt-1">
+                  {stats!.outreachReplyRate}%
+                </p>
+              </div>
+              <div className="bg-secondary/30 rounded-xl px-4 py-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Positive rate</p>
+                <p className="font-serif text-2xl text-foreground tabular-nums leading-none mt-1">
+                  {stats!.outreachPositiveRate}%
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {OUTREACH_STAGES.map((s) => {
+                const count = stats!.outreachByStage[s.key] || 0;
+                const total = Object.values(stats!.outreachByStage).reduce((a, b) => a + b, 0);
+                const pct = total > 0 ? (count / total) * 100 : 0;
+                return (
+                  <div key={s.key} className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-36 truncate">{s.label}</span>
+                    <div className="flex-1 h-1.5 bg-secondary/60 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary/70 transition-all duration-500"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-xs tabular-nums text-foreground/80 w-6 text-right">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </section>
       )}

@@ -10,6 +10,10 @@ export interface DashboardStats {
   activeSequences: number;
   callsBookedThisMonth: number;
   clientsClosedThisMonth: number;
+  outreachByStage: Record<string, number>;
+  outreachEnrolled: number;
+  outreachReplyRate: number;
+  outreachPositiveRate: number;
 }
 
 export function useDashboardStats() {
@@ -53,12 +57,35 @@ export function useDashboardStats() {
 
       const salesByStage: Record<string, number> = {};
       const onboardingByStage: Record<string, number> = {};
+      const outreachByStage: Record<string, number> = {};
+      let outreachEnrolled = 0;
+      let outreachReplied = 0;
+      let outreachPositive = 0;
+
+      const OUTREACH_REPLIED_STAGES = new Set([
+        "Replied",
+        "Interested – Positive Reply",
+        "Follow-up",
+        "Appt Set",
+      ]);
 
       for (const c of contacts) {
         if (c.pipeline === "Sales") {
           salesByStage[c.stage] = (salesByStage[c.stage] || 0) + 1;
         } else if (c.pipeline === "Onboarding") {
           onboardingByStage[c.stage] = (onboardingByStage[c.stage] || 0) + 1;
+        } else if (c.pipeline === "Outreach") {
+          outreachByStage[c.stage] = (outreachByStage[c.stage] || 0) + 1;
+          // Cold List = imported but not yet enrolled; exclude from rates
+          if (c.stage !== "Cold List") {
+            outreachEnrolled++;
+            if (OUTREACH_REPLIED_STAGES.has(c.stage) || c.stage === "Not Interested") {
+              outreachReplied++;
+            }
+            if (OUTREACH_REPLIED_STAGES.has(c.stage)) {
+              outreachPositive++;
+            }
+          }
         }
       }
 
@@ -71,6 +98,13 @@ export function useDashboardStats() {
         if (a.description?.includes("Client Closed")) clientsClosed++;
       }
 
+      const outreachReplyRate = outreachEnrolled > 0
+        ? Math.round((outreachReplied / outreachEnrolled) * 1000) / 10
+        : 0;
+      const outreachPositiveRate = outreachEnrolled > 0
+        ? Math.round((outreachPositive / outreachEnrolled) * 1000) / 10
+        : 0;
+
       return {
         totalContacts: contacts.length,
         salesByStage,
@@ -80,6 +114,10 @@ export function useDashboardStats() {
         activeSequences: activeEnrollmentsRes.count ?? 0,
         callsBookedThisMonth: callsBooked,
         clientsClosedThisMonth: clientsClosed,
+        outreachByStage,
+        outreachEnrolled,
+        outreachReplyRate,
+        outreachPositiveRate,
       } as DashboardStats;
     },
     refetchInterval: 30000,

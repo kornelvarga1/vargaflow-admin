@@ -520,16 +520,38 @@ serve(async (_req) => {
       `[cron] outreach tz=${outreachTz} day=${dayAllowed} window=${withinOutreachWindow} sentToday=${outreachSentToday}/${dailyCap} sentLastHr=${outreachSentLastHour} paceInterval=${pacingDecision.paceIntervalSeconds}s reason=${pacingDecision.reason} budget=${outreachBudget}`,
     );
 
-    // Grab up to 50 pending messages due now, oldest first. Join contacts to know pipeline/angle per row.
-    const { data: pendingMessages, error: pendingError } = await supabase
-      .from("message_queue")
-      .select("*, contact:contacts(pipeline, outreach_angle)")
-      .eq("status", "pending")
-      .lte("scheduled_at", now)
-      .order("scheduled_at", { ascending: true })
-      .limit(50);
+    // Fetch pending messages in two batches so outreach step-1s (which only
+    // consume 1 slot per tick anyway due to the daily cap) never starve
+    // follow-ups or CRM messages.
+    //
+    // Batch A — everything except outreach step-1 (CRM flows, step 2+, emails).
+    //   step_order IS NULL  → CRM messages (queueSteps doesn't set step_order)
+    //   step_order != '1'   → outreach follow-ups (step 2, 3…)
+    // Batch B — outreach step-1 only, max 1 (budget is 1 per tick anyway).
+    const [
+      { data: pendingOther,    error: pendingOtherError },
+      { data: pendingStep1,    error: pendingStep1Error },
+    ] = await Promise.all([
+      supabase
+        .from("message_queue")
+        .select("*, contact:contacts(pipeline, outreach_angle)")
+        .eq("status", "pending")
+        .lte("scheduled_at", now)
+        .or("metadata->>step_order.is.null,metadata->>step_order.neq.1")
+        .order("scheduled_at", { ascending: true })
+        .limit(49),
+      supabase
+        .from("message_queue")
+        .select("*, contact:contacts(pipeline, outreach_angle)")
+        .eq("status", "pending")
+        .lte("scheduled_at", now)
+        .eq("metadata->>step_order", "1")
+        .order("scheduled_at", { ascending: true })
+        .limit(1),
+    ]);
 
-    if (pendingError) throw new Error(`Queue fetch error: ${pendingError.message}`);
+    if (pendingOtherError) throw new Error(`Queue fetch error: ${pendingOtherError.message}`);
+    if (pendingStep1Error) throw new Error(`Queue fetch error (step1): ${pendingStep1Error.message}`);
 
     // Also pick up failed messages eligible for retry (retry_count < MAX_RETRIES, backoff elapsed)
     const { data: retryMessages, error: retryError } = await supabase
@@ -543,7 +565,11 @@ serve(async (_req) => {
 
     if (retryError) throw new Error(`Retry fetch error: ${retryError.message}`);
 
-    const messages = [...(pendingMessages ?? []), ...(retryMessages ?? [])];
+    const messages = [
+      ...(pendingOther ?? []),
+      ...(pendingStep1 ?? []),
+      ...(retryMessages ?? []),
+    ];
 
     // Note: do NOT early-return here — push notification section must always run
 

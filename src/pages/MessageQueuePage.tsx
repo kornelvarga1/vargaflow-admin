@@ -60,7 +60,7 @@ function useConversationContacts() {
       const { data: messages, error } = await supabase
         .from("message_queue")
         .select("contact_id, message_content, scheduled_at, sent_at, status, message_type, created_at, direction")
-        .is("business_id", null)
+        .or(`business_id.is.null,business_id.eq.${ADMIN_BUSINESS_ID}`)
         .in("status", ["sent", "received"])
         .order("scheduled_at", { ascending: false })
         .limit(500);

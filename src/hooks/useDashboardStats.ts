@@ -24,7 +24,7 @@ export function useDashboardStats() {
       monthAgo.setDate(monthAgo.getDate() - 30);
       const monthAgoISO = monthAgo.toISOString();
 
-      const [contactsRes, pendingRes, sentRes, activityRes] = await Promise.all([
+      const [contactsRes, pendingRes, sentRes, activityRes, contactsMessaged] = await Promise.all([
         supabase.from("contacts").select("id, pipeline, stage").is("business_id", null),
         supabase
           .from("message_queue")
@@ -42,10 +42,19 @@ export function useDashboardStats() {
           .select("activity_type, description, created_at")
           .eq("activity_type", "stage_changed")
           .gte("created_at", monthAgoISO),
+        supabase
+          .from("message_queue")
+          .select("contact_id")
+          .eq("status", "sent")
+          .eq("direction", "outbound")
+          .not("contact_id", "is", null),
       ]);
 
       const contacts = contactsRes.data || [];
       const contactIds = contacts.map((c) => c.id);
+      const messagedContactIds = new Set(
+        (contactsMessaged.data || []).map((r) => r.contact_id)
+      );
 
       const activeEnrollmentsRes = contactIds.length > 0
         ? await supabase
@@ -77,7 +86,7 @@ export function useDashboardStats() {
         } else if (c.pipeline === "Outreach") {
           outreachByStage[c.stage] = (outreachByStage[c.stage] || 0) + 1;
           // Cold List = imported but not yet enrolled; exclude from rates
-          if (c.stage !== "Cold List") {
+          if (c.stage !== "Cold List" && messagedContactIds.has(c.id)) {
             outreachEnrolled++;
             if (OUTREACH_REPLIED_STAGES.has(c.stage) || c.stage === "Not Interested") {
               outreachReplied++;

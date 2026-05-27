@@ -15,6 +15,11 @@ const HEALTHCHECKS_URL = Deno.env.get("HEALTHCHECKS_URL");
 
 const MAX_RETRIES = 3;
 const OUTREACH_PIPELINE = "Outreach";
+// Receives async delivery-status updates from Twilio. When a message fails
+// with an invalid-number code (30003–30006), the callback sets dnd_sms=true
+// and cancels pending follow-ups — closing the gap where sendSMS returns 200
+// but Twilio reports undelivered asynchronously.
+const STATUS_CALLBACK_URL = `${SUPABASE_URL}/functions/v1/twilio-status-callback`;
 // Admin's business_id — used as fallback when a contact/message has business_id=NULL.
 // Never pick "any" settings row by accident — that could land on a test client.
 const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
@@ -333,7 +338,7 @@ async function sendSMS(
         Authorization: "Basic " + btoa(`${TWILIO_SID}:${TWILIO_AUTH}`),
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ To: to, From: from, Body: body }),
+      body: new URLSearchParams({ To: to, From: from, Body: body, StatusCallback: STATUS_CALLBACK_URL }),
     }
   );
   const data = await res.json();
@@ -604,15 +609,17 @@ serve(async (_req) => {
         if (idx !== -1) processingIds.splice(idx, 1);
       };
 
-      // ── Global dnd_sms check (all SMS, not just outreach) ──
+      // ── Global dnd_sms + not-interested stage check (all SMS, not just outreach) ──
       if ((msg.message_type === "sms" || msg.message_type === "internal_sms") && msg.contact_id) {
         const { data: contactRow } = await supabase
           .from("contacts")
-          .select("dnd_sms")
+          .select("dnd_sms, stage, pipeline")
           .eq("id", msg.contact_id)
           .maybeSingle();
-        if (contactRow?.dnd_sms) {
-          console.log(`[cron] skipping message ${msg.id} — contact ${msg.contact_id} has dnd_sms=true`);
+        const isNotInterested = contactRow?.pipeline === "Outreach" && contactRow?.stage === "Not Interested";
+        if (contactRow?.dnd_sms || isNotInterested) {
+          const reason = contactRow?.dnd_sms ? "dnd_sms=true" : "stage=Not Interested";
+          console.log(`[cron] skipping message ${msg.id} — contact ${msg.contact_id} has ${reason}`);
           await releaseProcessing("skipped_dnd");
           dropProcessingId();
           continue;

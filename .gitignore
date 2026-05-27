@@ -29,3 +29,4 @@ dist-ssr
 # Supabase CLI binary + cache
 bin/
 supabase/.temp/
+.vercel

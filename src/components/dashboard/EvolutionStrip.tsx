@@ -146,19 +146,21 @@ export default function EvolutionStrip() {
             })}
           </div>
 
-          <div className="mt-4 pt-3.5 border-t border-border/40 flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">MRR</span>
-            <div className="flex items-center gap-1 bg-secondary/40 rounded-lg px-3 py-1.5">
-              <span className="text-xs text-muted-foreground">$</span>
-              <input
-                type="number"
-                value={inputVal}
-                min={0}
-                onChange={(e) => handleMrrChange(e.target.value)}
-                className="w-10 bg-transparent text-sm text-foreground tabular-nums outline-none"
-                placeholder="0"
-              />
-              <span className="text-xs text-muted-foreground">K/mo</span>
+          <div className="mt-4 pt-3.5 border-t border-border/40 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">MRR</span>
+              <div className="flex items-center gap-1 bg-secondary/40 rounded-lg px-3 py-1.5">
+                <span className="text-xs text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  value={inputVal}
+                  min={0}
+                  onChange={(e) => handleMrrChange(e.target.value)}
+                  className="w-10 bg-transparent text-sm text-foreground tabular-nums outline-none"
+                  placeholder="0"
+                />
+                <span className="text-xs text-muted-foreground">K/mo</span>
+              </div>
             </div>
             <span className="font-serif italic text-sm text-muted-foreground/50">The ocean is abundant.</span>
           </div>

@@ -63,7 +63,7 @@ const TIERS = [
     name: "Orca pod",
     range: "$100K+ MRR",
     min: 100000,
-    desc: "Top of the food chain. Coordinated, systematic, unstoppable — the ocean is abundant.",
+    desc: "Top of the food chain. Coordinated, systematic, unstoppable.",
   },
 ];
 
@@ -160,6 +160,7 @@ export default function EvolutionStrip() {
               />
               <span className="text-xs text-muted-foreground">K/mo</span>
             </div>
+            <span className="ml-auto font-serif italic text-sm text-muted-foreground/50">The ocean is abundant.</span>
           </div>
         </div>
       )}

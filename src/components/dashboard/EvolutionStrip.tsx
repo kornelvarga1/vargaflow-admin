@@ -31,7 +31,7 @@ const TIERS = [
     desc: "First hire (VA), ads testing begins, not scrambling anymore. Dangerous.",
   },
   {
-    emoji: "🦭",
+    emoji: "🦭💨",
     name: "Full leopard seal",
     range: "$15–30K MRR",
     min: 15000,

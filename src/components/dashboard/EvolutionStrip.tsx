@@ -155,7 +155,7 @@ export default function EvolutionStrip() {
                 value={inputVal}
                 min={0}
                 onChange={(e) => handleMrrChange(e.target.value)}
-                className="w-24 bg-transparent text-sm text-foreground tabular-nums outline-none"
+                className="w-10 bg-transparent text-sm text-foreground tabular-nums outline-none"
                 placeholder="0"
               />
               <span className="text-xs text-muted-foreground">K/mo</span>

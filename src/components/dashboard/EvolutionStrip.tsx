@@ -67,13 +67,15 @@ const TIERS = [
   },
 ];
 
-const MRR_KEY = "vf_mrr";
+const MRR_KEY = "vf_mrr_k";
 
 export default function EvolutionStrip() {
   const [expanded, setExpanded] = useState(false);
-  const [mrr, setMrr] = useState(() => Number(localStorage.getItem(MRR_KEY) ?? "0"));
+  const [peekIdx, setPeekIdx] = useState<number | null>(null);
+  const [mrrK, setMrrK] = useState(() => Number(localStorage.getItem(MRR_KEY) ?? "0"));
   const [inputVal, setInputVal] = useState(() => localStorage.getItem(MRR_KEY) ?? "0");
 
+  const mrr = mrrK * 1000;
   const currentIdx = TIERS.reduce((acc, t, i) => (mrr >= t.min ? i : acc), 0);
   const current = TIERS[currentIdx];
 
@@ -81,7 +83,7 @@ export default function EvolutionStrip() {
     setInputVal(val);
     const n = Number(val);
     if (!isNaN(n) && n >= 0) {
-      setMrr(n);
+      setMrrK(n);
       localStorage.setItem(MRR_KEY, String(n));
     }
   }
@@ -93,6 +95,7 @@ export default function EvolutionStrip() {
         className="w-full flex items-center justify-between bg-secondary/40 rounded-xl px-4 py-2.5 hover:bg-secondary/60 transition-colors"
       >
         <span className="flex items-center gap-2.5">
+          <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/40">Status</span>
           <span className="text-base leading-none">{current.emoji}</span>
           <span className="text-xs font-medium text-muted-foreground">{current.name}</span>
         </span>
@@ -107,12 +110,19 @@ export default function EvolutionStrip() {
             {TIERS.map((tier, i) => {
               const isCurrent = i === currentIdx;
               const isPast = i < currentIdx;
-              const opacity = isCurrent ? 1 : isPast ? 0.4 : 0.18;
+              const opacity = 1;
               return (
                 <div
                   key={i}
-                  className={`flex items-start gap-3 rounded-xl px-3 py-2.5 ${isCurrent ? "bg-secondary/50" : ""}`}
+                  className={`flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors ${
+                    isCurrent
+                      ? "bg-secondary/50"
+                      : i === peekIdx
+                      ? "bg-secondary/30 cursor-pointer"
+                      : "cursor-pointer hover:bg-secondary/20"
+                  }`}
                   style={{ opacity }}
+                  onClick={() => !isCurrent && setPeekIdx(i === peekIdx ? null : i)}
                 >
                   <span className={isCurrent ? "text-2xl leading-none mt-0.5" : "text-sm leading-none mt-1"}>
                     {tier.emoji}
@@ -124,7 +134,7 @@ export default function EvolutionStrip() {
                       </span>
                       <span className="text-[10px] text-muted-foreground">{tier.range}</span>
                     </div>
-                    {isCurrent && (
+                    {(isCurrent || i === peekIdx) && (
                       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{tier.desc}</p>
                     )}
                   </div>
@@ -148,7 +158,7 @@ export default function EvolutionStrip() {
                 className="w-24 bg-transparent text-sm text-foreground tabular-nums outline-none"
                 placeholder="0"
               />
-              <span className="text-xs text-muted-foreground">/mo</span>
+              <span className="text-xs text-muted-foreground">K/mo</span>
             </div>
           </div>
         </div>

@@ -49,8 +49,9 @@ export default function Index() {
 
   return (
     <div className="px-4 md:px-8 pt-8 max-w-5xl mx-auto animate-slide-up">
-      <header className="px-1 mb-6">
+      <header className="px-1 mb-6 flex items-baseline justify-between">
         <h1 className="font-serif text-3xl text-foreground">Dashboard</h1>
+        <span className="font-serif italic text-sm text-muted-foreground/50">Just win.</span>
       </header>
 
       {/* Stats */}

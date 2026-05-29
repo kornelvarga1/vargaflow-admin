@@ -1,0 +1,158 @@
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+
+const TIERS = [
+  {
+    emoji: "🐣",
+    name: "Penguin chick",
+    range: "$0",
+    min: 0,
+    desc: "Waddling on the ice, haven't hit the water yet. SMS warming up.",
+  },
+  {
+    emoji: "🐧",
+    name: "First dive penguin",
+    range: "$1–3K MRR",
+    min: 1000,
+    desc: "In the water, first catches, figuring out how to hunt. Clumsy but moving.",
+  },
+  {
+    emoji: "🐧🐧",
+    name: "Fat healthy penguin",
+    range: "$3–6K MRR",
+    min: 3000,
+    desc: "Consistently fed, SMS converting, delivery dialed in. Proof it works.",
+  },
+  {
+    emoji: "🦭",
+    name: "Young leopard seal",
+    range: "$6–15K MRR",
+    min: 6000,
+    desc: "First hire (VA), ads testing begins, not scrambling anymore. Dangerous.",
+  },
+  {
+    emoji: "🦭",
+    name: "Full leopard seal",
+    range: "$15–30K MRR",
+    min: 15000,
+    desc: "Ads converting, VA handling delivery, you're managing not doing. Comfortable predator.",
+  },
+  {
+    emoji: "🐬",
+    name: "Dolphin",
+    range: "$30–50K MRR",
+    min: 30000,
+    desc: "Closer hired, paid acquisition humming, systems tight. Playful and fast.",
+  },
+  {
+    emoji: "🐋",
+    name: "Young orca",
+    range: "$50–75K MRR",
+    min: 50000,
+    desc: "Real team, real volume, multiple acquisition channels running in parallel.",
+  },
+  {
+    emoji: "🐋💨",
+    name: "Full orca",
+    range: "$75–100K MRR",
+    min: 75000,
+    desc: "Pod forming. Systematic. Nothing in your lane is safe.",
+  },
+  {
+    emoji: "🐋🐋🐋",
+    name: "Orca pod",
+    range: "$100K+ MRR",
+    min: 100000,
+    desc: "Kai territory. Coordinated, unstoppable, and still not denting the ocean.",
+  },
+];
+
+const MRR_KEY = "vf_mrr";
+
+export default function EvolutionStrip() {
+  const [expanded, setExpanded] = useState(false);
+  const [mrr, setMrr] = useState(() => Number(localStorage.getItem(MRR_KEY) ?? "0"));
+  const [inputVal, setInputVal] = useState(() => localStorage.getItem(MRR_KEY) ?? "0");
+
+  const currentIdx = TIERS.reduce((acc, t, i) => (mrr >= t.min ? i : acc), 0);
+  const current = TIERS[currentIdx];
+
+  function handleMrrChange(val: string) {
+    setInputVal(val);
+    const n = Number(val);
+    if (!isNaN(n) && n >= 0) {
+      setMrr(n);
+      localStorage.setItem(MRR_KEY, String(n));
+    }
+  }
+
+  return (
+    <div className="mb-5">
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center justify-between bg-secondary/40 rounded-xl px-4 py-2.5 hover:bg-secondary/60 transition-colors"
+      >
+        <span className="flex items-center gap-2.5">
+          <span className="text-base leading-none">{current.emoji}</span>
+          <span className="text-xs font-medium text-muted-foreground">{current.name}</span>
+        </span>
+        {expanded
+          ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+          : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="mt-2 bg-card border border-border/60 rounded-2xl p-4">
+          <div className="space-y-0.5">
+            {TIERS.map((tier, i) => {
+              const isCurrent = i === currentIdx;
+              const isPast = i < currentIdx;
+              const opacity = isCurrent ? 1 : isPast ? 0.4 : 0.18;
+              return (
+                <div
+                  key={i}
+                  className={`flex items-start gap-3 rounded-xl px-3 py-2.5 ${isCurrent ? "bg-secondary/50" : ""}`}
+                  style={{ opacity }}
+                >
+                  <span className={isCurrent ? "text-2xl leading-none mt-0.5" : "text-sm leading-none mt-1"}>
+                    {tier.emoji}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className={`font-medium text-foreground ${isCurrent ? "text-sm" : "text-xs"}`}>
+                        {tier.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{tier.range}</span>
+                    </div>
+                    {isCurrent && (
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{tier.desc}</p>
+                    )}
+                  </div>
+                  {isCurrent && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0 mt-1.5" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 pt-3.5 border-t border-border/40 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">MRR</span>
+            <div className="flex items-center gap-1 bg-secondary/40 rounded-lg px-3 py-1.5">
+              <span className="text-xs text-muted-foreground">$</span>
+              <input
+                type="number"
+                value={inputVal}
+                min={0}
+                onChange={(e) => handleMrrChange(e.target.value)}
+                className="w-24 bg-transparent text-sm text-foreground tabular-nums outline-none"
+                placeholder="0"
+              />
+              <span className="text-xs text-muted-foreground">/mo</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

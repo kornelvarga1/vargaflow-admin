@@ -5,71 +5,22 @@ export interface DashboardStats {
   totalContacts: number;
   salesByStage: Record<string, number>;
   onboardingByStage: Record<string, number>;
-  pendingMessages: number;
-  sentMessagesThisMonth: number;
-  activeSequences: number;
-  callsBookedThisMonth: number;
-  clientsClosedThisMonth: number;
+  sentMessages: number;        // unique contacts first-touched in period
+  callsBooked: number;
+  clientsClosed: number;
   outreachByStage: Record<string, number>;
-  outreachEnrolled: number;
+  outreachEnrolled: number;    // = sentMessages (same set, used for campaign header + rates)
   outreachReplyRate: number;
   outreachPositiveRate: number;
 }
 
-export function useDashboardStats() {
+export function useDashboardStats(days = 30) {
   return useQuery({
-    queryKey: ["dashboard_stats"],
+    queryKey: ["dashboard_stats", days],
     queryFn: async () => {
-      const monthAgo = new Date();
-      monthAgo.setDate(monthAgo.getDate() - 30);
-      const monthAgoISO = monthAgo.toISOString();
-
-      const [contactsRes, pendingRes, sentRes, activityRes, contactsMessaged] = await Promise.all([
-        supabase.from("contacts").select("id, pipeline, stage").is("business_id", null),
-        supabase
-          .from("message_queue")
-          .select("id", { count: "exact", head: true })
-          .is("business_id", null)
-          .eq("status", "pending"),
-        supabase
-          .from("message_queue")
-          .select("id", { count: "exact", head: true })
-          .is("business_id", null)
-          .eq("status", "sent")
-          .gte("sent_at", monthAgoISO),
-        supabase
-          .from("activity_log")
-          .select("activity_type, description, created_at")
-          .eq("activity_type", "stage_changed")
-          .gte("created_at", monthAgoISO),
-        supabase
-          .from("message_queue")
-          .select("contact_id")
-          .eq("status", "sent")
-          .eq("direction", "outbound")
-          .not("contact_id", "is", null),
-      ]);
-
-      const contacts = contactsRes.data || [];
-      const contactIds = contacts.map((c) => c.id);
-      const messagedContactIds = new Set(
-        (contactsMessaged.data || []).map((r) => r.contact_id)
-      );
-
-      const activeEnrollmentsRes = contactIds.length > 0
-        ? await supabase
-            .from("contact_sequences")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "active")
-            .in("contact_id", contactIds)
-        : { count: 0 };
-
-      const salesByStage: Record<string, number> = {};
-      const onboardingByStage: Record<string, number> = {};
-      const outreachByStage: Record<string, number> = {};
-      let outreachEnrolled = 0;
-      let outreachReplied = 0;
-      let outreachPositive = 0;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const cutoffISO = cutoff.toISOString();
 
       const OUTREACH_REPLIED_STAGES = new Set([
         "Replied",
@@ -78,6 +29,39 @@ export function useDashboardStats() {
         "Appt Set",
       ]);
 
+      const [contactsRes, firstTouchedRes, activityRes] = await Promise.all([
+        // All contacts — for stage breakdowns (current snapshot, not time-filtered)
+        supabase.from("contacts").select("id, pipeline, stage").is("business_id", null),
+        // Unique contacts first-touched in period (step-1 Outreach sends)
+        supabase
+          .from("message_queue")
+          .select("contact_id, contact:contacts!inner(pipeline)")
+          .eq("status", "sent")
+          .eq("metadata->>step_order", "1")
+          .eq("contact.pipeline", "Outreach")
+          .gte("sent_at", cutoffISO),
+        // Stage changes in period — for calls booked + clients closed
+        supabase
+          .from("activity_log")
+          .select("description")
+          .eq("activity_type", "stage_changed")
+          .gte("created_at", cutoffISO),
+      ]);
+
+      const contacts = contactsRes.data || [];
+
+      // Unique contact IDs first-touched in period
+      const firstTouchedIds = new Set(
+        (firstTouchedRes.data ?? []).map((r: any) => r.contact_id).filter(Boolean)
+      );
+
+      // Stage lookup for reply rate calculation
+      const stageById = new Map(contacts.map((c) => [c.id, c.stage]));
+
+      // Stage breakdowns (current state, all-time)
+      const salesByStage: Record<string, number> = {};
+      const onboardingByStage: Record<string, number> = {};
+      const outreachByStage: Record<string, number> = {};
       for (const c of contacts) {
         if (c.pipeline === "Sales") {
           salesByStage[c.stage] = (salesByStage[c.stage] || 0) + 1;
@@ -85,26 +69,19 @@ export function useDashboardStats() {
           onboardingByStage[c.stage] = (onboardingByStage[c.stage] || 0) + 1;
         } else if (c.pipeline === "Outreach") {
           outreachByStage[c.stage] = (outreachByStage[c.stage] || 0) + 1;
-          // Cold List = imported but not yet enrolled; exclude from rates
-          if (c.stage !== "Cold List" && messagedContactIds.has(c.id)) {
-            outreachEnrolled++;
-            if (OUTREACH_REPLIED_STAGES.has(c.stage) || c.stage === "Not Interested") {
-              outreachReplied++;
-            }
-            if (OUTREACH_REPLIED_STAGES.has(c.stage)) {
-              outreachPositive++;
-            }
-          }
         }
       }
 
-      // Count calls booked and clients closed this month from activity log
-      const stageActivities = activityRes.data || [];
-      let callsBooked = 0;
-      let clientsClosed = 0;
-      for (const a of stageActivities) {
-        if (a.description?.includes("Zoom Call Booked")) callsBooked++;
-        if (a.description?.includes("Client Closed")) clientsClosed++;
+      // Campaign performance: rates based on contacts first-touched in period
+      let outreachEnrolled = 0;
+      let outreachReplied = 0;
+      let outreachPositive = 0;
+      for (const id of firstTouchedIds) {
+        const stage = stageById.get(id);
+        if (!stage) continue;
+        outreachEnrolled++;
+        if (OUTREACH_REPLIED_STAGES.has(stage) || stage === "Not Interested") outreachReplied++;
+        if (OUTREACH_REPLIED_STAGES.has(stage)) outreachPositive++;
       }
 
       const outreachReplyRate = outreachEnrolled > 0
@@ -114,15 +91,21 @@ export function useDashboardStats() {
         ? Math.round((outreachPositive / outreachEnrolled) * 1000) / 10
         : 0;
 
+      // Calls booked + clients closed in period
+      let callsBooked = 0;
+      let clientsClosed = 0;
+      for (const a of activityRes.data || []) {
+        if (a.description?.includes("Zoom Call Booked")) callsBooked++;
+        if (a.description?.includes("Client Closed")) clientsClosed++;
+      }
+
       return {
         totalContacts: contacts.length,
         salesByStage,
         onboardingByStage,
-        pendingMessages: pendingRes.count ?? 0,
-        sentMessagesThisMonth: sentRes.count ?? 0,
-        activeSequences: activeEnrollmentsRes.count ?? 0,
-        callsBookedThisMonth: callsBooked,
-        clientsClosedThisMonth: clientsClosed,
+        sentMessages: firstTouchedIds.size,
+        callsBooked,
+        clientsClosed,
         outreachByStage,
         outreachEnrolled,
         outreachReplyRate,

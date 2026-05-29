@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import NeedsAttentionSection from "@/components/dashboard/NeedsAttentionSection";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
 import { useActivityLog } from "@/hooks/useActivityLog";
+import { useOutreachRunway } from "@/hooks/useOutreachRunway";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
 
 const OUTREACH_STAGES = [
@@ -24,7 +24,7 @@ import {
   ListChecks,
   Activity,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 
 const activityIcons: Record<string, typeof Activity> = {
   contact_created: UserPlus,
@@ -34,9 +34,17 @@ const activityIcons: Record<string, typeof Activity> = {
   contact_updated: Users,
 };
 
+const PERIODS: { days: number; label: string }[] = [
+  { days: 1,  label: "24h" },
+  { days: 7,  label: "7 days" },
+  { days: 30, label: "30 days" },
+];
+
 export default function Index() {
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+  const [period, setPeriod] = useState(30);
+  const { data: stats, isLoading: statsLoading } = useDashboardStats(period);
   const { data: activities = [], isLoading: actLoading } = useActivityLog(50);
+  const { data: runway } = useOutreachRunway();
   const [activityCount, setActivityCount] = useState(8);
 
   return (
@@ -46,22 +54,34 @@ export default function Index() {
         <p className="text-sm text-muted-foreground mt-1">Welcome back to Local Scaling CRM</p>
       </header>
 
-      <NeedsAttentionSection />
-
-      {/* Stats — uniform 3-col grid of 6 cards */}
+      {/* Stats */}
       <div className="mt-5">
+        <div className="flex justify-end mb-3">
+          <div className="inline-flex items-center bg-secondary/60 rounded-full p-0.5">
+            {PERIODS.map((p) => (
+              <button
+                key={p.days}
+                onClick={() => setPeriod(p.days)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                  period === p.days
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {statsLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 stagger-in">
-            <StatCard label="Total Contacts" value={stats?.totalContacts ?? 0} to="/contacts" />
-            <StatCard label="Pending Messages" value={stats?.pendingMessages ?? 0} to="/messages" />
-            <StatCard label="Sent This Month" value={stats?.sentMessagesThisMonth ?? 0} to="/messages" />
-            <StatCard label="Active Sequences" value={stats?.activeSequences ?? 0} to="/sequences" />
-            <StatCard label="Calls Booked" value={stats?.callsBookedThisMonth ?? 0} to="/pipeline/sales" />
-            <StatCard label="Clients Closed" value={stats?.clientsClosedThisMonth ?? 0} to="/pipeline/onboarding" />
+          <div className="grid grid-cols-3 gap-3">
+            <StatCard label="Contacted" value={stats?.sentMessages ?? 0} to="/messages" />
+            <StatCard label="Calls Booked" value={stats?.callsBooked ?? 0} to="/pipeline/sales" />
+            <StatCard label="Clients Closed" value={stats?.clientsClosed ?? 0} to="/pipeline/onboarding" />
           </div>
         )}
       </div>
@@ -75,8 +95,35 @@ export default function Index() {
           <div className="bg-card border border-border/60 rounded-2xl p-4">
             <div className="flex items-center justify-between mb-4">
               <span className="font-medium text-sm text-foreground">Campaign performance</span>
-              <span className="text-xs text-muted-foreground tabular-nums">{stats!.outreachEnrolled} enrolled</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{stats!.outreachEnrolled} contacted</span>
             </div>
+
+            {runway && runway.backlog > 0 && (
+              <div className="flex items-center justify-between bg-secondary/30 rounded-xl px-4 py-2.5 mb-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Runway</p>
+                  <p className="text-sm text-foreground tabular-nums mt-0.5">
+                    <span className="font-medium">{runway.backlog}</span>
+                    <span className="text-muted-foreground"> left</span>
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-medium tabular-nums text-foreground">
+                    {runway.sendingDaysLeft === 0 ? "< 1 day" :
+                     runway.sendingDaysLeft === 1 ? "~1 day" :
+                     `~${runway.sendingDaysLeft} days`}
+                  </p>
+                  {runway.dryDate && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Runs dry {format(runway.dryDate, "EEE MMM d")}
+                      <span className="mx-1 opacity-50">·</span>
+                      {runway.dailyCap}/day
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-secondary/30 rounded-xl px-4 py-3">
                 <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Reply rate</p>

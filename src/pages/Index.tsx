@@ -251,12 +251,12 @@ function StatCard({
   return (
     <Link
       to={to}
-      className="block bg-card border border-border/60 rounded-2xl px-4 py-4 hover:bg-secondary/20 transition-colors"
+      className="flex flex-col bg-card border border-border/60 rounded-2xl px-4 py-4 hover:bg-secondary/20 transition-colors"
     >
       <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
-      <p className="font-serif text-3xl text-foreground tabular-nums leading-none mt-2">
+      <p className="font-serif text-3xl text-foreground tabular-nums leading-none mt-auto pt-2">
         {value}
       </p>
     </Link>

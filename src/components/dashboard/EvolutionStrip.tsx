@@ -63,7 +63,7 @@ const TIERS = [
     name: "Orca pod",
     range: "$100K+ MRR",
     min: 100000,
-    desc: "Kai territory. Coordinated, unstoppable, and still not denting the ocean.",
+    desc: "Top of the food chain. Coordinated, systematic, unstoppable — the ocean is abundant.",
   },
 ];
 

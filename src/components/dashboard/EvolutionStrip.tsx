@@ -146,7 +146,7 @@ export default function EvolutionStrip() {
             })}
           </div>
 
-          <div className="mt-4 pt-3.5 border-t border-border/40 flex items-center gap-2">
+          <div className="mt-4 pt-3.5 border-t border-border/40 flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">MRR</span>
             <div className="flex items-center gap-1 bg-secondary/40 rounded-lg px-3 py-1.5">
               <span className="text-xs text-muted-foreground">$</span>
@@ -160,7 +160,7 @@ export default function EvolutionStrip() {
               />
               <span className="text-xs text-muted-foreground">K/mo</span>
             </div>
-            <span className="ml-auto font-serif italic text-sm text-muted-foreground/50">The ocean is abundant.</span>
+            <span className="font-serif italic text-sm text-muted-foreground/50">The ocean is abundant.</span>
           </div>
         </div>
       )}

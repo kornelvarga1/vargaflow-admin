@@ -308,6 +308,17 @@ serve(async (req) => {
         console.error("[inbound-sms] failed to stop outreach sequences:", stopErr);
       }
 
+      // Cancel all pending messages so nothing queued fires after a reply.
+      try {
+        await supabase
+          .from("message_queue")
+          .update({ status: "cancelled" })
+          .eq("contact_id", contactId)
+          .eq("status", "pending");
+      } catch (cancelErr) {
+        console.error("[inbound-sms] failed to cancel pending messages:", cancelErr);
+      }
+
       // Send outreach-specific notification to my_phone.
       try {
         if (settings.my_phone) {

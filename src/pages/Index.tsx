@@ -51,7 +51,6 @@ export default function Index() {
     <div className="px-4 md:px-8 pt-8 max-w-5xl mx-auto animate-slide-up">
       <header className="px-1 mb-6">
         <h1 className="font-serif text-3xl text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Welcome back to Local Scaling CRM</p>
       </header>
 
       {/* Stats */}

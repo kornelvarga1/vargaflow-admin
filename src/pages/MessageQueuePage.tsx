@@ -575,6 +575,17 @@ function ComposeBar({
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    for (const ref of [mobileTextareaRef, desktopTextareaRef]) {
+      const el = ref.current;
+      if (!el) continue;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [text]);
 
   const handleSend = async () => {
     if (!text.trim()) return;
@@ -637,6 +648,7 @@ function ComposeBar({
       {/* Mobile: separated slim bar + bigger button beside */}
       <div className="md:hidden flex items-end gap-2">
         <textarea
+          ref={mobileTextareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -647,7 +659,7 @@ function ComposeBar({
           autoCapitalize="off"
           spellCheck={false}
           data-form-type="other"
-          className="flex-1 resize-none rounded-full border border-input bg-background px-4 py-1.5 text-base placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring min-h-[36px] max-h-[120px]"
+          className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-1.5 text-base placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring min-h-[36px] max-h-[180px] overflow-y-auto"
           rows={1}
         />
         <button
@@ -670,8 +682,9 @@ function ComposeBar({
       </div>
 
       {/* Desktop: unified rounded-full pill with button inside */}
-      <div className="hidden md:block relative rounded-full border border-input bg-background focus-within:ring-2 focus-within:ring-ring transition-shadow">
+      <div className="hidden md:block relative rounded-2xl border border-input bg-background focus-within:ring-2 focus-within:ring-ring transition-shadow">
         <textarea
+          ref={desktopTextareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -682,7 +695,7 @@ function ComposeBar({
           autoCapitalize="off"
           spellCheck={false}
           data-form-type="other"
-          className="block w-full resize-none bg-transparent pl-5 pr-12 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-[120px]"
+          className="block w-full resize-none bg-transparent pl-5 pr-12 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-[180px] overflow-y-auto"
           rows={1}
         />
         <button

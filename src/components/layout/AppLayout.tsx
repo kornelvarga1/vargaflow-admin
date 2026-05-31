@@ -13,6 +13,7 @@ import {
   FileText,
   WifiOff,
   ChevronRight,
+  TrendingUp,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useConversationOpen } from "@/context/ConversationContext";
@@ -49,6 +50,7 @@ const allNavItems = [
   { to: "/sequences", icon: ListChecks, label: "Sequences", end: false },
   { to: "/clients", icon: Building2, label: "Clients", end: false },
   { to: "/onboarding-submissions", icon: FileText, label: "Submissions", end: false },
+  { to: "/growth", icon: TrendingUp, label: "Growth", end: false },
   { to: "/settings", icon: Settings, label: "Settings", end: false },
 ];
 

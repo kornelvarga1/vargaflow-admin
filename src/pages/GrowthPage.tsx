@@ -97,11 +97,13 @@ function computeMonths(inputs: Inputs, totalMonths: number) {
   const nowShort = now.toLocaleString("en-US", { month: "short" });
   const nowYr = String(now.getFullYear()).slice(2);
   const nowLabel = `${nowShort} '${nowYr}`;
-  const data: { idx: number; month: string; fullMonth: string; mrr: number; age: number | null }[] = [
-    { idx: 0, month: "Now", fullMonth: nowLabel, mrr: Math.round(mrr), age: null },
+  let cumulative = Math.round(mrr);
+  const data: { idx: number; month: string; fullMonth: string; mrr: number; cumulative: number; age: number | null }[] = [
+    { idx: 0, month: "Now", fullMonth: nowLabel, mrr: Math.round(mrr), cumulative, age: null },
   ];
   for (let i = 1; i <= totalMonths; i++) {
     mrr = Math.max(0, mrr + mrrAdded - mrr * (inputs.churnRate / 100));
+    cumulative += Math.round(mrr);
     const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
     const short = d.toLocaleString("en-US", { month: "short" });
     const yr = String(d.getFullYear()).slice(2);
@@ -109,7 +111,7 @@ function computeMonths(inputs: Inputs, totalMonths: number) {
     const isBirthday = d.getMonth() === BIRTHDAY_MONTH;
     const month = d.getMonth() === 0 ? fullMonth : short;
     const age = isBirthday ? BIRTHDAY_NEXT_AGE + (d.getFullYear() - BIRTHDAY_NEXT_YEAR) : null;
-    data.push({ idx: i, month, fullMonth, mrr: Math.round(mrr), age });
+    data.push({ idx: i, month, fullMonth, mrr: Math.round(mrr), cumulative, age });
   }
   return data;
 }
@@ -170,17 +172,18 @@ function InputRow({ label, value, onChange, min, max, step, suffix, prefix }: In
 
 type TooltipProps = {
   active?: boolean;
-  payload?: Array<{ value: number; payload: { fullMonth: string } }>;
+  payload?: Array<{ value: number; payload: { fullMonth: string; cumulative: number } }>;
 };
 
 function ChartTooltip({ active, payload }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const mrr = payload[0].value;
-  const fullMonth = payload[0].payload.fullMonth;
+  const { fullMonth, cumulative } = payload[0].payload;
   return (
     <div className="bg-card border border-border/60 rounded-xl px-3 py-2 shadow-sm">
       <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{fullMonth}</p>
       <p className="font-serif text-lg text-foreground tabular-nums">{fmtMoney(mrr)}</p>
+      <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">{fmtMoney(cumulative)} collected</p>
     </div>
   );
 }
@@ -209,6 +212,7 @@ export default function GrowthPage() {
   const totalMonths = months;
   const chartData = computeMonths(inputs, totalMonths);
   const endMRR = chartData[chartData.length - 1].mrr;
+  const totalCollected = chartData[chartData.length - 1].cumulative;
 
   // explicit tick indices — ~13 on desktop, ~5 on mobile across all zoom levels
   const tickStep = Math.max(1, isMobile ? Math.round(totalMonths / 4) : Math.round(totalMonths / 12));
@@ -389,16 +393,26 @@ export default function GrowthPage() {
               MRR at month {totalMonths}
             </p>
           </div>
-          {endMRR > inputs.startingMRR && (
-            <div className="text-right">
+          <div className="text-right flex flex-col gap-3 items-end">
+            {endMRR > inputs.startingMRR && (
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  Added
+                </p>
+                <p className="font-serif text-2xl text-foreground tabular-nums mt-0.5">
+                  +{fmtMoney(endMRR - inputs.startingMRR)}
+                </p>
+              </div>
+            )}
+            <div>
               <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                Added
+                Total collected
               </p>
               <p className="font-serif text-2xl text-foreground tabular-nums mt-0.5">
-                +{fmtMoney(endMRR - inputs.startingMRR)}
+                {fmtMoney(totalCollected)}
               </p>
             </div>
-          )}
+          </div>
         </div>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={chartData} margin={{ top: 4, right: 20, bottom: 0, left: 0 }}>

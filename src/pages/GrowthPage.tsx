@@ -17,6 +17,13 @@ const BIRTHDAY_MONTH = 7;  // August (0-indexed)
 const BIRTHDAY_NEXT_AGE = 23;
 const BIRTHDAY_NEXT_YEAR = 2026;
 
+const MRR_MILESTONES = [
+  { mrr: 1000,  label: "Freedom from 9-5s" },
+  { mrr: 3000,  label: "Budapest" },
+  { mrr: 10000, label: "F-Type" },
+  { mrr: 30000, label: "Porsche" },
+];
+
 type Inputs = {
   messagesPerDay: number;
   replyRate: number;
@@ -180,7 +187,7 @@ function ChartTooltip({ active, payload }: TooltipProps) {
 
 export default function GrowthPage() {
   const [inputs, setInputs] = useState<Inputs>(loadInputs);
-  const [years, setYears] = useState(1);
+  const [months, setMonths] = useState(12);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   useEffect(() => {
@@ -199,12 +206,12 @@ export default function GrowthPage() {
     setInputs((prev) => ({ ...prev, [key]: v }));
 
   const f = computeFunnel(inputs);
-  const totalMonths = years * 12;
+  const totalMonths = months;
   const chartData = computeMonths(inputs, totalMonths);
   const endMRR = chartData[chartData.length - 1].mrr;
 
   // explicit tick indices — ~13 on desktop, ~5 on mobile across all zoom levels
-  const tickStep = isMobile ? totalMonths / 4 : totalMonths / 12;
+  const tickStep = Math.max(1, isMobile ? Math.round(totalMonths / 4) : Math.round(totalMonths / 12));
   const tickIndices = Array.from(
     { length: Math.round(totalMonths / tickStep) + 1 },
     (_, i) => Math.round(i * tickStep),
@@ -359,18 +366,18 @@ export default function GrowthPage() {
                 Projection
               </p>
               <div className="flex gap-0.5">
-                {[1, 2, 3].map((y) => (
+                {([{ label: "3M", value: 3 }, { label: "1Y", value: 12 }, { label: "2Y", value: 24 }, { label: "3Y", value: 36 }] as const).map((t) => (
                   <button
-                    key={y}
+                    key={t.value}
                     type="button"
-                    onClick={() => setYears(y)}
+                    onClick={() => setMonths(t.value)}
                     className={`px-2 py-0.5 rounded-md text-xs font-medium transition-colors ${
-                      years === y
+                      months === t.value
                         ? "bg-secondary text-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
                     }`}
                   >
-                    {y}Y
+                    {t.label}
                   </button>
                 ))}
               </div>
@@ -454,6 +461,31 @@ export default function GrowthPage() {
                       opacity={0.6}
                     >
                       🎂 {pt.age}
+                    </text>
+                  );
+                }}
+              />
+            ))}
+            {MRR_MILESTONES.filter((m) => m.mrr <= endMRR).map((m) => (
+              <ReferenceLine
+                key={m.mrr}
+                y={m.mrr}
+                stroke="hsl(var(--muted-foreground))"
+                strokeDasharray="4 4"
+                strokeOpacity={0.3}
+                label={(props) => {
+                  const vb = (props as { viewBox?: { x: number; y: number; width: number } }).viewBox;
+                  if (!vb) return <></>;
+                  return (
+                    <text
+                      x={vb.x + vb.width - 4}
+                      y={vb.y - 4}
+                      textAnchor="end"
+                      fontSize={10}
+                      fill="hsl(var(--muted-foreground))"
+                      opacity={0.55}
+                    >
+                      {m.label}
                     </text>
                   );
                 }}

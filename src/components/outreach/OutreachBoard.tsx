@@ -98,7 +98,13 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
 
   const columns = OUTREACH_STAGES.map((stage) => ({
     ...stage,
-    contacts: filtered.filter((c) => c.stage === stage.key),
+    contacts: filtered
+      .filter((c) => c.stage === stage.key)
+      .sort((a, b) => {
+        const aTime = a.stage_entered_at ?? a.created_at;
+        const bTime = b.stage_entered_at ?? b.created_at;
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      }),
   }));
 
   const handleDragEnd = async (result: DropResult) => {

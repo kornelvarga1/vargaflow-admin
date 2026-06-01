@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -168,10 +168,28 @@ export default function ContactProfilePage() {
   const { data: messages = [] } = useContactMessages(id!);
   const { data: sequences = [] } = useContactActiveSequences(id!);
   const qc = useQueryClient();
+  const updateContact = useUpdateContact();
 
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [notesValue, setNotesValue] = useState("");
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+
+  const resizeNotes = useCallback(() => {
+    const el = notesRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    setNotesValue(contact?.notes || "");
+  }, [contact?.id]);
+
+  useEffect(() => {
+    resizeNotes();
+  }, [notesValue, resizeNotes]);
 
   if (isLoading) {
     return (
@@ -301,18 +319,25 @@ export default function ContactProfilePage() {
         </div>
       </header>
 
-      {/* Notes — whole card tappable */}
-      <button
-        onClick={() => setEditOpen(true)}
-        className="w-full text-left bg-card border border-border/60 rounded-2xl p-4 hover:bg-secondary/30 transition-colors active-press"
-      >
+      {/* Notes — inline editable */}
+      <div className="w-full bg-card border border-border/60 rounded-2xl p-4">
         <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground mb-2">Notes</p>
-        {contact.notes ? (
-          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{contact.notes}</p>
-        ) : (
-          <p className="text-sm text-muted-foreground">Add a note…</p>
-        )}
-      </button>
+        <Textarea
+          ref={notesRef}
+          value={notesValue}
+          onChange={(e) => { setNotesValue(e.target.value); resizeNotes(); }}
+          onBlur={async () => {
+            const trimmed = notesValue.trim();
+            const original = contact.notes?.trim() || "";
+            if (trimmed !== original) {
+              await updateContact.mutateAsync({ id: contact.id, notes: trimmed || null });
+              qc.invalidateQueries({ queryKey: ["contact", id] });
+            }
+          }}
+          placeholder="Add a note…"
+          className="text-sm resize-none border-0 p-0 bg-transparent shadow-none min-h-[60px] overflow-hidden placeholder:text-muted-foreground"
+        />
+      </div>
 
       {/* Active Sequences */}
       {sequences.length > 0 && (

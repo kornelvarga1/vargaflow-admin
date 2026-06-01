@@ -307,8 +307,8 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                                             <DropdownMenuItem onClick={() => moveTo(contact, "Interested – Positive Reply")}>
                                               <ThumbsUp className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Interested
                                             </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => moveTo(contact, "Follow-up")}>
-                                              <MessageSquareOff className="w-4 h-4 mr-2" strokeWidth={1.5} /> Move to Follow-up
+                                            <DropdownMenuItem onClick={() => moveTo(contact, "Follow-up 1")}>
+                                              <MessageSquareOff className="w-4 h-4 mr-2" strokeWidth={1.5} /> Move to Follow-up 1
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => moveTo(contact, "Appt Set")}>
                                               <CalendarCheck className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Appt Set

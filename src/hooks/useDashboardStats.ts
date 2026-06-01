@@ -25,7 +25,9 @@ export function useDashboardStats(days = 30) {
       const OUTREACH_REPLIED_STAGES = new Set([
         "Replied",
         "Interested – Positive Reply",
-        "Follow-up",
+        "Follow-up 1",
+        "Follow-up 2",
+        "Follow-up 3",
         "Appt Set",
       ]);
 

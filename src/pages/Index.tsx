@@ -11,7 +11,9 @@ const OUTREACH_STAGES = [
   { key: "Sequence Active",            label: "In Sequence" },
   { key: "Replied",                    label: "Replied" },
   { key: "Interested – Positive Reply",label: "Interested" },
-  { key: "Follow-up",                  label: "Follow-up" },
+  { key: "Follow-up 1",                label: "Follow-up 1" },
+  { key: "Follow-up 2",                label: "Follow-up 2" },
+  { key: "Follow-up 3",                label: "Follow-up 3" },
   { key: "Appt Set",                   label: "Appt Set" },
   { key: "Not Interested",             label: "Not Interested" },
 ];

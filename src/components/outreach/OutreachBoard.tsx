@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact, OUTREACH_STAGES } from "@/hooks/useContacts";
 import { logActivity } from "@/hooks/useActivityLog";
+import { invokeFunction } from "@/lib/invokeFunction";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +108,22 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       }),
   }));
 
+  // When a leads_incentive contact is moved to "Interested – Positive Reply",
+  // enroll them in the warm follow-up sequence (video + W1-W6). Fire-and-forget:
+  // the stage change is already committed; a failed enrollment shows a toast but
+  // does not roll back the stage.
+  const maybeEnrollWarm = async (contact: Contact, newStage: string) => {
+    if (newStage !== "Interested – Positive Reply") return;
+    if (contact.outreach_angle !== "leads_incentive") return;
+    const { error } = await invokeFunction("flow-outreach-warm-enroll", {
+      contact_id: contact.id,
+    });
+    if (error) {
+      console.error("[OutreachBoard] warm enroll failed:", error);
+      toast.error("Warm sequence enroll failed", { description: String(error) });
+    }
+  };
+
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
     const contactId = result.draggableId;
@@ -122,6 +139,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       const stageLabel = OUTREACH_STAGES.find((s) => s.key === newStage)?.label || newStage;
       await logActivity("stage_changed", `moved to ${stageLabel}`, contactId);
       toast.success(`${contact.full_name} → ${stageLabel}`);
+      await maybeEnrollWarm(contact, newStage);
     } catch {
       toast.error("Failed to move contact");
     }
@@ -136,6 +154,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       });
       await logActivity("stage_changed", `moved to ${stage}`, contact.id);
       toast.success(`${contact.full_name} → ${stage}`);
+      await maybeEnrollWarm(contact, stage);
     } catch {
       toast.error("Failed to update stage");
     }

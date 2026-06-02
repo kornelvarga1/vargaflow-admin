@@ -82,6 +82,16 @@ function startOfDayInTz(now: Date, timeZone: string): Date {
   return dateAtHourInTz(now, 0, timeZone);
 }
 
+// Return the next time the send window opens at windowStartHour in timeZone,
+// starting from `from`. If today's window open is still in the future, return
+// that; otherwise return tomorrow's window open.
+function nextWindowOpen(from: Date, windowStartHour: number, timeZone: string): Date {
+  const todayOpen = dateAtHourInTz(from, windowStartHour, timeZone);
+  if (todayOpen > from) return todayOpen;
+  const nextDay = new Date(from.getTime() + 24 * 3600_000);
+  return dateAtHourInTz(nextDay, windowStartHour, timeZone);
+}
+
 interface PacingConfig {
   dailyCap: number;
   windowSeconds: number;
@@ -200,9 +210,12 @@ async function getSequenceStepCount(
   return count ?? 0;
 }
 
-// Queue the next step in this contact's sequence (if any) using the previous step's
-// actual send time as the anchor. Returns silently if there's no next step or the
-// contact_sequence is no longer active.
+// Queue the next step in this contact's sequence (if any).
+// For regular sequences: schedules relative to this step's actual send time.
+// For anchor_timing sequences: schedules as (started_at + cumulative_delay),
+// so follow-ups always land at the same clock-time as the initial trigger
+// regardless of when earlier steps actually sent. Also enforces the send window
+// for anchor sequences (defers outside-window times to next 9am).
 async function queueNextStep(
   supabase: ReturnType<typeof createClient>,
   msg: any,
@@ -213,11 +226,19 @@ async function queueNextStep(
 
   const { data: cs } = await supabase
     .from("contact_sequences")
-    .select("sequence_id, status")
+    .select("sequence_id, status, started_at")
     .eq("id", msg.contact_sequence_id)
     .maybeSingle();
-  const seqRow = cs as { sequence_id: string; status: string } | null;
+  const seqRow = cs as { sequence_id: string; status: string; started_at: string | null } | null;
   if (!seqRow || seqRow.status !== "active") return;
+
+  // Fetch anchor_timing flag from the sequence.
+  const { data: seqMeta } = await supabase
+    .from("sequences")
+    .select("anchor_timing")
+    .eq("id", seqRow.sequence_id)
+    .maybeSingle();
+  const anchorTiming: boolean = (seqMeta as any)?.anchor_timing ?? false;
 
   // Look up the next step + the just-sent step in one go so we can compute the
   // gap-from-previous (sequence_steps stores delays as cumulative-from-enrollment).
@@ -239,8 +260,29 @@ async function queueNextStep(
 
   const currentTotalMin = (current?.delay_hours ?? 0) * 60 + (current?.delay_minutes ?? 0);
   const nextTotalMin = (next.delay_hours ?? 0) * 60 + (next.delay_minutes ?? 0);
-  const deltaMin = Math.max(0, nextTotalMin - currentTotalMin);
-  const sendAt = new Date(Date.now() + deltaMin * 60_000);
+
+  // Fetch settings once — needed for both template resolution and anchor window checks.
+  const settings = await getSettingsCached(supabase, msg.business_id ?? null);
+
+  let sendAt: Date;
+  if (anchorTiming && seqRow.started_at) {
+    // Anchor all steps to the sequence's enrollment start time so follow-ups
+    // always land at the same clock-time as the initial trigger.
+    const startedAtMs = new Date(seqRow.started_at).getTime();
+    const calculatedMs = startedAtMs + nextTotalMin * 60_000;
+    // If in the past (e.g. sequence was paused), send ASAP.
+    sendAt = new Date(Math.max(calculatedMs, Date.now() + 5_000));
+    // Enforce send window: defer to next window-open (default 9am) if outside.
+    const tz = (settings.outreach_timezone as string) ?? OUTREACH_TZ_FALLBACK;
+    const windowStart = (settings.send_window_start as number) ?? 9;
+    const windowEnd = (settings.send_window_end as number) ?? 19;
+    if (!isWithinSendWindow({ send_window_start: windowStart, send_window_end: windowEnd }, sendAt, tz)) {
+      sendAt = nextWindowOpen(sendAt, windowStart, tz);
+    }
+  } else {
+    const deltaMin = Math.max(0, nextTotalMin - currentTotalMin);
+    sendAt = new Date(Date.now() + deltaMin * 60_000);
+  }
 
   // Fetch fresh contact for template resolution (msg.contact is a partial join).
   const { data: contactRow } = await supabase
@@ -248,7 +290,6 @@ async function queueNextStep(
     .select("full_name, phone, email")
     .eq("id", msg.contact_id)
     .maybeSingle();
-  const settings = await getSettingsCached(supabase, msg.business_id ?? null);
   const resolved = resolveTemplate(next.message_template, contactRow ?? {}, settings);
 
   const { error: insErr } = await supabase.from("message_queue").insert({
@@ -525,43 +566,59 @@ serve(async (_req) => {
       `[cron] outreach tz=${outreachTz} day=${dayAllowed} window=${withinOutreachWindow} sentToday=${outreachSentToday}/${dailyCap} sentLastHr=${outreachSentLastHour} paceInterval=${pacingDecision.paceIntervalSeconds}s reason=${pacingDecision.reason} budget=${outreachBudget}`,
     );
 
-    // Fetch pending messages in two batches so outreach step-1s (which only
-    // consume 1 slot per tick anyway due to the daily cap) never starve
-    // follow-ups or CRM messages.
+    // Fetch pending messages in three batches to prevent outreach step-1 cold
+    // sends from starving follow-ups or warm-sequence messages.
     //
-    // Batch A — everything except outreach step-1 (CRM flows, step 2+, emails).
+    // Batch A — everything except step-1 (CRM flows, step 2+, emails).
     //   step_order IS NULL  → CRM messages (queueSteps doesn't set step_order)
-    //   step_order != '1'   → outreach follow-ups (step 2, 3…)
-    // Batch B — outreach step-1 only, max 1 (budget is 1 per tick anyway).
+    //   step_order != '1'   → follow-ups (step 2, 3…) for any sequence
+    // Batch B — cold outreach step-1 only (stage='Sequence Active'), max 1.
+    //   Gated by daily send cap, send window, and pacing interval.
+    // Batch C — warm/replied step-1 (stage != 'Sequence Active'), up to 5.
+    //   Bypasses daily cap — these are responses to positive replies, not
+    //   cold first-touches. Timing already enforced at scheduling time via
+    //   queueNextStep anchor_timing logic.
     const [
-      { data: pendingOther,    error: pendingOtherError },
-      { data: pendingStep1,    error: pendingStep1Error },
+      { data: pendingOther,     error: pendingOtherError },
+      { data: pendingStep1Cold, error: pendingStep1ColdError },
+      { data: pendingStep1Warm, error: pendingStep1WarmError },
     ] = await Promise.all([
       supabase
         .from("message_queue")
-        .select("*, contact:contacts(pipeline, outreach_angle)")
+        .select("*, contact:contacts(pipeline, stage, outreach_angle)")
         .eq("status", "pending")
         .lte("scheduled_at", now)
         .or("metadata->>step_order.is.null,metadata->>step_order.neq.1")
         .order("scheduled_at", { ascending: true })
-        .limit(49),
+        .limit(44),
       supabase
         .from("message_queue")
-        .select("*, contact:contacts(pipeline, outreach_angle)")
+        .select("*, contact:contacts!inner(pipeline, stage, outreach_angle)")
         .eq("status", "pending")
         .lte("scheduled_at", now)
         .eq("metadata->>step_order", "1")
+        .eq("contact.stage", "Sequence Active")
         .order("scheduled_at", { ascending: true })
         .limit(1),
+      supabase
+        .from("message_queue")
+        .select("*, contact:contacts!inner(pipeline, stage, outreach_angle)")
+        .eq("status", "pending")
+        .lte("scheduled_at", now)
+        .eq("metadata->>step_order", "1")
+        .neq("contact.stage", "Sequence Active")
+        .order("scheduled_at", { ascending: true })
+        .limit(5),
     ]);
 
     if (pendingOtherError) throw new Error(`Queue fetch error: ${pendingOtherError.message}`);
-    if (pendingStep1Error) throw new Error(`Queue fetch error (step1): ${pendingStep1Error.message}`);
+    if (pendingStep1ColdError) throw new Error(`Queue fetch error (step1 cold): ${pendingStep1ColdError.message}`);
+    if (pendingStep1WarmError) throw new Error(`Queue fetch error (step1 warm): ${pendingStep1WarmError.message}`);
 
     // Also pick up failed messages eligible for retry (retry_count < MAX_RETRIES, backoff elapsed)
     const { data: retryMessages, error: retryError } = await supabase
       .from("message_queue")
-      .select("*, contact:contacts(pipeline, outreach_angle)")
+      .select("*, contact:contacts(pipeline, stage, outreach_angle)")
       .eq("status", "failed")
       .lt("metadata->>retry_count", MAX_RETRIES)
       .lte("metadata->>retry_after", now)
@@ -572,7 +629,8 @@ serve(async (_req) => {
 
     const messages = [
       ...(pendingOther ?? []),
-      ...(pendingStep1 ?? []),
+      ...(pendingStep1Cold ?? []),
+      ...(pendingStep1Warm ?? []),
       ...(retryMessages ?? []),
     ];
 
@@ -599,9 +657,10 @@ serve(async (_req) => {
 
       const isOutreach = msg.contact?.pipeline === OUTREACH_PIPELINE;
       const stepOrder = Number(msg.metadata?.step_order ?? 0);
-      // First-touch send: only these are gated by send window, day filter, daily cap,
-      // and pacing. Follow-ups (step 2, 3) bypass — they fire whenever scheduled.
-      const isFirstSend = isOutreach && stepOrder === 1;
+      // First-touch cold send: gated by send window, day filter, daily cap, and pacing.
+      // Warm/replied step-1s (stage != 'Sequence Active') bypass all gates — timing
+      // is already enforced at scheduling time via queueNextStep anchor_timing logic.
+      const isFirstSend = isOutreach && stepOrder === 1 && (msg.contact?.stage ?? "") === "Sequence Active";
       const releaseProcessing = (newStatus: string) =>
         supabase.from("message_queue").update({ status: newStatus }).eq("id", msg.id);
       const dropProcessingId = () => {

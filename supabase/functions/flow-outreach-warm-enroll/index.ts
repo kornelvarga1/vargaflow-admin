@@ -20,6 +20,46 @@ function json(status: number, body: unknown) {
   });
 }
 
+// Schedule step 1 at (now + delay), deferred to the next send-window open if it
+// falls outside business hours. Keeps W1 out of late-night delivery slots.
+function scheduleStep1(
+  step: { delay_hours: number | null; delay_minutes: number | null },
+  settings: Record<string, any>,
+): string {
+  const delayMs = ((step.delay_hours ?? 0) * 60 + (step.delay_minutes ?? 0)) * 60_000;
+  let sendAt = new Date(Date.now() + delayMs);
+
+  const tz: string = settings.outreach_timezone ?? "America/New_York";
+  const windowStart: number = settings.send_window_start ?? 9;
+  const windowEnd: number = settings.send_window_end ?? 19;
+
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: tz }).format(sendAt),
+  );
+  const insideWindow = hour >= windowStart && hour < windowEnd;
+
+  if (!insideWindow) {
+    // Advance to next window open (today if still ahead, otherwise tomorrow)
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(sendAt);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    const datePart = `${get("year")}-${get("month")}-${get("day")}`;
+    const naive = new Date(`${datePart}T${String(windowStart).padStart(2, "0")}:00:00Z`);
+    const seenHour = Number(
+      new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: tz }).format(naive),
+    );
+    let delta = seenHour - windowStart;
+    if (delta > 12) delta -= 24;
+    if (delta < -12) delta += 24;
+    let todayOpen = new Date(naive.getTime() - delta * 3600_000);
+    if (todayOpen <= sendAt) todayOpen = new Date(todayOpen.getTime() + 24 * 3600_000);
+    sendAt = todayOpen;
+  }
+
+  return sendAt.toISOString();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
@@ -89,6 +129,7 @@ serve(async (req) => {
     const settingsBid = contact.business_id ?? ADMIN_BUSINESS_ID;
     const settings = await getSettings(supabase, settingsBid);
     const step1 = steps[0];
+    const scheduledAt = scheduleStep1(step1, settings);
 
     const { error: queueErr } = await supabase.from("message_queue").insert({
       contact_id,
@@ -97,7 +138,7 @@ serve(async (req) => {
       message_type: step1.message_type,
       message_content: resolveTemplate(step1.message_template, contact, settings),
       to_phone: contact.phone,
-      scheduled_at: now,
+      scheduled_at: scheduledAt,
       status: "pending",
       metadata: { to: contact.phone, step_order: 1 },
     });

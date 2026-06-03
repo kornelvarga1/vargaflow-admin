@@ -300,7 +300,7 @@ export default function MessageQueuePage() {
     ALL_STAGES.find((s) => s.key === key && s.pipeline === pipeline)?.label || key;
 
   return (
-    <div ref={outerRef} className="flex flex-1 min-h-0 overflow-hidden animate-fade-in" style={{ contain: "strict" }}>
+    <div ref={outerRef} className="flex flex-1 min-h-0 overflow-hidden animate-fade-in">
       {/* Left Panel: Contact List */}
       <div className={`flex flex-col border-border/40 shrink-0 w-full md:w-80 lg:w-96 md:border-r bg-muted/60 ${selectedContactId ? "hidden md:flex" : "flex"}`}>
 

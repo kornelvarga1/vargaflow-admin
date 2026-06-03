@@ -189,7 +189,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                 className={`bg-card border border-border/60 rounded-xl cursor-pointer transition-all ${
                                   snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : "hover:bg-secondary/30"
                                 }`}
-                                onClick={() => navigate(`/contacts/${contact.id}`)}
+                                onClick={() => navigate("/messages", { state: { contactId: contact.id } })}
                               >
                                 <div className="p-3 flex items-start gap-2">
                                   <div

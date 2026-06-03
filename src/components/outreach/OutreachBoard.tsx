@@ -295,7 +295,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                                   className={`bg-card border rounded-xl cursor-pointer transition-all ${
                                     isSelected ? "border-primary/60 bg-secondary/40" : "border-border/60 hover:bg-secondary/30"
                                   } ${snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : ""}`}
-                                  onClick={() => navigate(`/contacts/${contact.id}`)}
+                                  onClick={() => navigate("/messages", { state: { contactId: contact.id } })}
                                 >
                                   <div className="p-3 flex items-start gap-2">
                                     <div

@@ -18,6 +18,7 @@ import {
   ArrowUp,
   Zap,
   Phone,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
@@ -575,6 +576,7 @@ function ComposeBar({
 }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const mobileTextareaRef = useRef<HTMLTextAreaElement>(null);
   const desktopTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -643,8 +645,41 @@ function ComposeBar({
     }
   };
 
+  const handleSuggest = async () => {
+    setSuggesting(true);
+    try {
+      const { data, error } = await invokeFunction<{ suggestion: string; error?: string }>(
+        "suggest-reply",
+        { contact_id: contactId, contact_name: contactName }
+      );
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? "Failed");
+      if (data?.suggestion) setText(data.suggestion);
+    } catch {
+      toast.error("Couldn't generate suggestion");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   return (
     <div className="px-3 py-2 border-t border-border/40 bg-background shrink-0">
+      {/* Suggest reply */}
+      <div className="flex items-center pb-1.5">
+        <button
+          type="button"
+          onClick={handleSuggest}
+          disabled={suggesting || sending}
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+        >
+          {suggesting ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <Sparkles className="w-3 h-3" />
+          )}
+          {suggesting ? "Thinking…" : "Suggest reply"}
+        </button>
+      </div>
+
       {/* Mobile: separated slim bar + bigger button beside */}
       <div className="md:hidden flex items-end gap-2">
         <textarea

@@ -95,5 +95,21 @@ serve(async (req) => {
     console.log(`[status-callback] cancelled ${cancelled.length} pending messages for ${To}`);
   }
 
+  // Flip already-sent messages to "failed" so the dashboard doesn't count
+  // this contact as "contacted". The number is permanently bad so every send
+  // to it was wasted regardless of when it was sent.
+  const { data: flippedRows, error: flipErr } = await supabase
+    .from("message_queue")
+    .update({ status: "failed" })
+    .in("contact_id", contactIds)
+    .eq("status", "sent")
+    .select("id");
+
+  if (flipErr) {
+    console.error(`[status-callback] sent→failed flip error for ${To}:`, flipErr.message);
+  } else if (flippedRows && flippedRows.length > 0) {
+    console.log(`[status-callback] marked ${flippedRows.length} sent messages as failed for ${To} (error_code=${ErrorCode})`);
+  }
+
   return new Response("ok", { status: 200 });
 });

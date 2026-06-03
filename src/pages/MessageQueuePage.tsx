@@ -302,7 +302,7 @@ export default function MessageQueuePage() {
   return (
     <div ref={outerRef} className="flex flex-1 min-h-0 overflow-hidden animate-fade-in" style={{ contain: "strict" }}>
       {/* Left Panel: Contact List */}
-      <div className={`flex flex-col border-border/40 shrink-0 w-full md:w-80 lg:w-96 md:border-r ${selectedContactId ? "hidden md:flex" : "flex"}`}>
+      <div className={`flex flex-col border-border/40 shrink-0 w-full md:w-80 lg:w-96 md:border-r bg-muted/60 ${selectedContactId ? "hidden md:flex" : "flex"}`}>
 
         {/* Header: title + segmented control inline, search below */}
         <div className="px-4 pt-8 pb-3 shrink-0">
@@ -399,8 +399,8 @@ export default function MessageQueuePage() {
       {/* Right Panel: Conversation */}
       <div className={
         selectedContactId
-          ? "fixed inset-x-0 top-0 h-dvh flex flex-col overflow-hidden bg-background z-20 md:static md:flex-1 md:h-auto md:inset-auto md:z-auto"
-          : "hidden md:flex md:flex-col md:flex-1 md:min-w-0"
+          ? "fixed inset-x-0 top-0 h-dvh flex flex-col overflow-hidden bg-background z-20 md:static md:flex-1 md:h-auto md:inset-auto md:z-auto md:bg-background"
+          : "hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:bg-background"
       }>
         {!selectedContactId ? (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-base">
@@ -416,7 +416,7 @@ export default function MessageQueuePage() {
               const headerName = selectedContact.full_name.trim();
               const headerIsPhone = !headerName || /^[+\d]/.test(headerName);
               return (
-                <div className="sticky top-0 z-10 px-3 py-2.5 border-b border-border/40 bg-background/95 backdrop-blur space-y-1.5 shrink-0">
+                <div className="sticky top-0 z-10 px-3 py-2.5 border-b border-border/40 bg-muted/60 backdrop-blur space-y-1.5 shrink-0">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
@@ -533,7 +533,7 @@ export default function MessageQueuePage() {
               document.body.style.userSelect = "none";
             }}
           />
-          <div className="hidden xl:flex flex-col overflow-y-auto shrink-0" style={{ width: rightWidth }}>
+          <div className="hidden xl:flex flex-col overflow-y-auto shrink-0 bg-muted/60" style={{ width: rightWidth }}>
             <ContactProfileBody id={selectedContactId} showBackButton={false} />
           </div>
         </>
@@ -698,7 +698,7 @@ function ComposeBar({
   };
 
   return (
-    <div className="px-3 py-2 border-t border-border/40 bg-background shrink-0">
+    <div className="px-3 py-2 border-t border-border/40 bg-muted/60 shrink-0">
       {/* Suggest reply */}
       <div className="flex items-center pb-1.5">
         <button

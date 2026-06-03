@@ -587,7 +587,7 @@ function MessageBubble({ message }: { message: Message }) {
         <p className="text-[15px] leading-[1.45] whitespace-pre-wrap">
           {renderMessageContent(
             message.message_content,
-            "underline underline-offset-2 text-foreground"
+            "underline underline-offset-2 text-primary"
           )}
         </p>
         {isPending && (

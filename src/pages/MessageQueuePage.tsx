@@ -37,6 +37,7 @@ type ConversationContact = {
   pipeline: string;
   stage: string;
   lastMessage: string;
+  lastMessageDirection: "inbound" | "outbound";
   lastMessageAt: string;
   hasUnread: boolean;
   messageCount: number;
@@ -103,7 +104,8 @@ function useConversationContacts() {
           phone: contact.phone,
           pipeline: contact.pipeline,
           stage: contact.stage,
-          lastMessage: (latest.direction === "outbound" ? "You: " : "") + latest.message_content,
+          lastMessage: latest.message_content,
+          lastMessageDirection: (latest.direction ?? "outbound") as "inbound" | "outbound",
           lastMessageAt: latest.sent_at || latest.scheduled_at,
           hasUnread: msgs.some(
             (m) =>
@@ -302,7 +304,7 @@ export default function MessageQueuePage() {
   return (
     <div ref={outerRef} className="flex flex-1 min-h-0 overflow-hidden animate-fade-in">
       {/* Left Panel: Contact List */}
-      <div className={`flex flex-col border-border/40 shrink-0 w-full md:w-80 lg:w-96 md:border-r bg-muted/60 ${selectedContactId ? "hidden md:flex" : "flex"}`}>
+      <div className={`flex flex-col shrink-0 w-full md:w-80 lg:w-96 bg-background md:bg-secondary ${selectedContactId ? "hidden md:flex" : "flex"}`}>
 
         {/* Header: title + segmented control inline, search below */}
         <div className="px-4 pt-8 pb-3 shrink-0">
@@ -332,7 +334,7 @@ export default function MessageQueuePage() {
               placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-10 text-base bg-secondary/40 border-0 focus-visible:ring-1 focus-visible:ring-ring/50"
+              className="pl-9 h-10 text-base bg-background border border-border/60 focus-visible:ring-1 focus-visible:ring-ring/50"
             />
           </div>
         </div>
@@ -350,7 +352,7 @@ export default function MessageQueuePage() {
                 : "No conversations match your filter."}
             </div>
           ) : (
-            <div className="pb-4">
+            <div className="pb-4 px-2 space-y-0.5">
               {filteredContacts.map((c) => {
                 const name = c.full_name.trim();
                 const isPhone = !name || /^[+\d]/.test(name);
@@ -358,8 +360,10 @@ export default function MessageQueuePage() {
                 return (
                   <button
                     key={c.id}
-                    className={`w-full text-left px-4 py-3 flex items-center gap-3 overflow-x-hidden hover:bg-secondary/40 active:bg-secondary transition-colors ${
-                      selectedContactId === c.id ? "bg-secondary/60" : ""
+                    className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 overflow-x-hidden transition-colors ${
+                      selectedContactId === c.id
+                        ? "bg-background shadow-sm"
+                        : "hover:bg-background/60 active:bg-background/80"
                     }`}
                     onClick={() => selectContact(c.id)}
                   >
@@ -381,8 +385,11 @@ export default function MessageQueuePage() {
                           {formatDistanceToNow(new Date(c.lastMessageAt), { addSuffix: false })}
                         </span>
                       </div>
-                      <p className={`text-sm min-w-0 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5 ${isUnread ? "text-foreground/90" : "text-muted-foreground"}`}>
-                        {c.lastMessage}
+                      <p className={`text-sm min-w-0 overflow-hidden text-ellipsis whitespace-nowrap mt-0.5 flex items-center gap-1 ${isUnread ? "text-foreground/90" : "text-muted-foreground"}`}>
+                        {c.lastMessageDirection === "outbound" && (
+                          <ArrowUp className="w-3 h-3 shrink-0 opacity-50" strokeWidth={2} />
+                        )}
+                        <span className="truncate">{c.lastMessage}</span>
                       </p>
                     </div>
                     {isUnread && (
@@ -403,10 +410,11 @@ export default function MessageQueuePage() {
           : "hidden md:flex md:flex-col md:flex-1 md:min-w-0 md:bg-background"
       }>
         {!selectedContactId ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground text-base">
+          <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" strokeWidth={1.5} />
-              <p>Select a contact to view conversation</p>
+              <MessageSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground/25" strokeWidth={1.25} />
+              <p className="text-sm font-medium text-foreground/50">No conversation selected</p>
+              <p className="text-xs text-muted-foreground/50 mt-1">Pick a contact from the left to start</p>
             </div>
           </div>
         ) : (
@@ -416,7 +424,7 @@ export default function MessageQueuePage() {
               const headerName = selectedContact.full_name.trim();
               const headerIsPhone = !headerName || /^[+\d]/.test(headerName);
               return (
-                <div className="sticky top-0 z-10 px-3 py-2.5 border-b border-border/40 bg-muted/60 backdrop-blur space-y-1.5 shrink-0">
+                <div className="sticky top-0 z-10 px-3 py-2.5 border-b border-border/30 bg-background/90 backdrop-blur-sm space-y-1.5 shrink-0">
                   <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
@@ -485,11 +493,12 @@ export default function MessageQueuePage() {
                     const t = new Date(msg.sent_at || msg.scheduled_at).getTime();
                     if (lastTime === null || t - lastTime > 5 * 60 * 1000) {
                       elements.push(
-                        <div
-                          key={`sep-${msg.id}`}
-                          className="text-center text-[11px] text-muted-foreground py-2 select-none"
-                        >
-                          {format(new Date(t), "MMM d · h:mm a")}
+                        <div key={`sep-${msg.id}`} className="flex items-center gap-3 py-2 select-none">
+                          <div className="flex-1 h-px bg-border/40" />
+                          <span className="text-[11px] text-muted-foreground/70 shrink-0">
+                            {format(new Date(t), "MMM d · h:mm a")}
+                          </span>
+                          <div className="flex-1 h-px bg-border/40" />
                         </div>
                       );
                     }
@@ -502,7 +511,7 @@ export default function MessageQueuePage() {
             </div>
 
             {/* Compose */}
-            <div className="flex-none" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)" }}>
+            <div className="flex-none">
               <ComposeBar
                 contactId={selectedContactId}
                 contactName={selectedContact?.full_name || ""}
@@ -525,7 +534,7 @@ export default function MessageQueuePage() {
       {selectedContactId && (
         <>
           <div
-            className="hidden xl:flex w-1 shrink-0 cursor-col-resize bg-border/40 hover:bg-primary/40 transition-colors"
+            className="hidden xl:flex w-px shrink-0 cursor-col-resize bg-border/30 hover:bg-primary/30 transition-colors"
             onMouseDown={(e) => {
               e.preventDefault();
               isDragging.current = true;
@@ -533,7 +542,7 @@ export default function MessageQueuePage() {
               document.body.style.userSelect = "none";
             }}
           />
-          <div className="hidden xl:flex flex-col overflow-y-auto shrink-0 bg-muted/60" style={{ width: rightWidth }}>
+          <div className="hidden xl:flex flex-col overflow-y-auto shrink-0 bg-secondary" style={{ width: rightWidth }}>
             <ContactProfileBody id={selectedContactId} showBackButton={false} />
           </div>
         </>
@@ -568,10 +577,10 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[72%] rounded-3xl px-3.5 py-2.5 ${
+        className={`max-w-[72%] rounded-2xl px-3.5 py-2.5 ${
           isOutbound
-            ? "bg-secondary text-foreground rounded-br-lg"
-            : "bg-[var(--bubble-in-bg)] text-[var(--bubble-in-text)] rounded-bl-lg"
+            ? "bg-foreground/80 text-background"
+            : "bg-[var(--bubble-in-bg)] text-[var(--bubble-in-text)]"
         } ${isCancelled ? "opacity-50 line-through" : ""} ${isPending && isOutbound ? "opacity-60" : ""}`}
         title={format(new Date(message.sent_at || message.scheduled_at), "MMM d, yyyy · h:mm a")}
       >
@@ -697,95 +706,70 @@ function ComposeBar({
     }
   };
 
+  const sharedTextareaRef = useRef<HTMLTextAreaElement>(null);
+
   return (
-    <div className="px-3 py-2 border-t border-border/40 bg-muted/60 shrink-0">
-      {/* Suggest reply */}
-      <div className="flex items-center pb-1.5">
-        <button
-          type="button"
-          onClick={handleSuggest}
-          disabled={suggesting || sending}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-        >
-          {suggesting ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : (
-            <Sparkles className="w-3 h-3" />
-          )}
-          {suggesting ? "Thinking…" : "Suggest reply"}
-        </button>
-      </div>
-
-      {/* Mobile: separated slim bar + bigger button beside */}
-      <div className="md:hidden flex items-end gap-2">
+    <div className="px-3 pb-3 pt-2 shrink-0" style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}>
+      {/* Single unified compose box — mobile + desktop */}
+      <div className="relative rounded-2xl border border-border/60 bg-background focus-within:border-border focus-within:ring-2 focus-within:ring-ring/30 transition-all shadow-md">
+        {/* Textarea */}
         <textarea
-          ref={mobileTextareaRef}
+          ref={(el) => {
+            (mobileTextareaRef as any).current = el;
+            (desktopTextareaRef as any).current = el;
+            (sharedTextareaRef as any).current = el;
+          }}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            const el = e.target;
+            el.style.height = "auto";
+            el.style.height = `${el.scrollHeight}px`;
+          }}
           onKeyDown={handleKeyDown}
-          placeholder={`Message ${contactName}...`}
+          placeholder={`Message ${contactName}…`}
           inputMode="text"
           autoComplete="new-password"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
           data-form-type="other"
-          className="flex-1 resize-none rounded-2xl border border-input bg-background px-4 py-1.5 text-base placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring min-h-[36px] max-h-[180px] overflow-y-auto"
+          className="block w-full resize-none bg-transparent pl-4 pr-12 pt-3 pb-10 text-base placeholder:text-muted-foreground focus:outline-none min-h-[52px] max-h-[180px] overflow-y-auto"
           rows={1}
         />
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!text.trim() || sending}
-          aria-label="Send"
-          className={`shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-colors disabled:opacity-100 ${
-            text.trim()
-              ? "bg-primary text-primary-foreground hover:brightness-110"
-              : "bg-secondary text-muted-foreground"
-          }`}
-        >
-          {sending ? (
-            <Loader2 className="w-5 h-5 animate-spin" strokeWidth={2} />
-          ) : (
-            <ArrowUp className="w-5 h-5" strokeWidth={2.25} />
-          )}
-        </button>
-      </div>
-
-      {/* Desktop: unified rounded-full pill with button inside */}
-      <div className="hidden md:block relative rounded-2xl border border-input bg-background focus-within:ring-2 focus-within:ring-ring transition-shadow">
-        <textarea
-          ref={desktopTextareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`Message ${contactName}...`}
-          inputMode="text"
-          autoComplete="new-password"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          data-form-type="other"
-          className="block w-full resize-none bg-transparent pl-5 pr-12 py-2.5 text-base placeholder:text-muted-foreground focus:outline-none min-h-[44px] max-h-[180px] overflow-y-auto"
-          rows={1}
-        />
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={!text.trim() || sending}
-          aria-label="Send"
-          className={`absolute right-1 bottom-1 h-9 w-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-100 ${
-            text.trim()
-              ? "bg-primary text-primary-foreground hover:brightness-110"
-              : "bg-secondary text-muted-foreground"
-          }`}
-        >
-          {sending ? (
-            <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
-          ) : (
-            <ArrowUp className="w-4 h-4" strokeWidth={2.25} />
-          )}
-        </button>
+        {/* Bottom toolbar inside the box */}
+        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-2 pb-2">
+          <button
+            type="button"
+            onClick={handleSuggest}
+            disabled={suggesting || sending}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 px-1.5 py-1 rounded-lg hover:bg-secondary/60"
+          >
+            {suggesting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5" />
+            )}
+            <span>{suggesting ? "Thinking…" : "Suggest"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={sending || !text.trim()}
+            aria-label="Send"
+            className={`h-9 w-9 rounded-xl flex items-center justify-center bg-primary text-primary-foreground hover:brightness-110 transition-all duration-200 origin-center ${
+              text.trim() || sending
+                ? "scale-100 opacity-100"
+                : "scale-50 opacity-0 pointer-events-none"
+            }`}
+          >
+            {sending ? (
+              <Loader2 className="w-4 h-4 animate-spin" strokeWidth={2} />
+            ) : (
+              <ArrowUp className="w-4 h-4" strokeWidth={2.5} />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

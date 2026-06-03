@@ -82,7 +82,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         {/* Desktop left rail — icon + label */}
         <aside
           aria-label="Primary"
-          className="hidden md:flex w-20 flex-col items-center py-4 gap-0.5 border-r border-border/40 bg-muted/60 shrink-0"
+          className="hidden md:flex w-20 flex-col items-center py-4 gap-0.5 border-r border-border/40 bg-secondary shrink-0"
         >
           {allNavItems.map((item) => (
             <NavLink

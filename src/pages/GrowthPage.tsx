@@ -18,10 +18,11 @@ const BIRTHDAY_NEXT_AGE = 23;
 const BIRTHDAY_NEXT_YEAR = 2026;
 
 const MRR_MILESTONES = [
-  { mrr: 1000,  label: "Freedom from 9-5s" },
-  { mrr: 3000,  label: "Budapest" },
-  { mrr: 10000, label: "F-Type" },
-  { mrr: 30000, label: "Porsche" },
+  { mrr: 1000,   label: "Freedom from 9-5s" },
+  { mrr: 3000,   label: "Budapest" },
+  { mrr: 10000,  label: "F-Type" },
+  { mrr: 30000,  label: "Porsche" },
+  { mrr: 100000, label: "Aston Martin DBS" },
 ];
 
 type Inputs = {

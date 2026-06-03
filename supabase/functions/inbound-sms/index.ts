@@ -296,7 +296,7 @@ serve(async (req) => {
           .eq("contact_id", contactId)
           .eq("status", "active");
         const outreachSeqIds = (activeSeqs ?? [])
-          .filter((s: any) => s.sequence?.pipeline === OUTREACH_PIPELINE)
+          .filter((s: any) => s.sequence?.pipeline?.toLowerCase() === OUTREACH_PIPELINE.toLowerCase())
           .map((s: any) => s.id);
         if (outreachSeqIds.length > 0) {
           await supabase

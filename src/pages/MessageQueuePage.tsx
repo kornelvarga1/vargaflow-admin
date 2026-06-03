@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { ContactProfileBody } from "./ContactProfilePage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { invokeFunction } from "@/lib/invokeFunction";
@@ -169,6 +170,7 @@ function useConversation(contactId: string | null) {
   });
 }
 
+
 function useContactActiveSequence(contactId: string | null) {
   return useQuery({
     queryKey: ["contact_seq_banner", contactId],
@@ -195,6 +197,22 @@ export default function MessageQueuePage() {
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
     (location.state as { contactId?: string } | null)?.contactId ?? null
   );
+  const [rightWidth, setRightWidth] = useState(280);
+  const isDragging = useRef(false);
+  const outerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDragging.current || !outerRef.current) return;
+      const rect = outerRef.current.getBoundingClientRect();
+      const newWidth = rect.right - e.clientX;
+      setRightWidth(Math.max(280, Math.min(900, newWidth)));
+    };
+    const onUp = () => { isDragging.current = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
   const [seenIds, setSeenIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
@@ -282,7 +300,7 @@ export default function MessageQueuePage() {
     ALL_STAGES.find((s) => s.key === key && s.pipeline === pipeline)?.label || key;
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden animate-fade-in">
+    <div ref={outerRef} className="flex flex-1 min-h-0 overflow-hidden animate-fade-in" style={{ contain: "strict" }}>
       {/* Left Panel: Contact List */}
       <div className={`flex flex-col border-border/40 shrink-0 w-full md:w-80 lg:w-96 md:border-r ${selectedContactId ? "hidden md:flex" : "flex"}`}>
 
@@ -502,6 +520,24 @@ export default function MessageQueuePage() {
           </>
         )}
       </div>
+
+      {/* Drag handle + right panel — desktop only */}
+      {selectedContactId && (
+        <>
+          <div
+            className="hidden xl:flex w-1 shrink-0 cursor-col-resize bg-border/40 hover:bg-primary/40 transition-colors"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isDragging.current = true;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+          />
+          <div className="hidden xl:flex flex-col overflow-y-auto shrink-0" style={{ width: rightWidth }}>
+            <ContactProfileBody id={selectedContactId} showBackButton={false} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -754,3 +790,4 @@ function ComposeBar({
     </div>
   );
 }
+

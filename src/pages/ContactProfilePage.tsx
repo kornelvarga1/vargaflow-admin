@@ -160,13 +160,12 @@ function getActivityIcon(type: string) {
 
 // --- Main Component ---
 
-export default function ContactProfilePage() {
-  const { id } = useParams<{ id: string }>();
+export function ContactProfileBody({ id, showBackButton = true }: { id: string; showBackButton?: boolean }) {
   const navigate = useNavigate();
-  const { data: contact, isLoading } = useContact(id!);
-  const { data: activities = [] } = useContactActivity(id!);
-  const { data: messages = [] } = useContactMessages(id!);
-  const { data: sequences = [] } = useContactActiveSequences(id!);
+  const { data: contact, isLoading } = useContact(id);
+  const { data: activities = [] } = useContactActivity(id);
+  const { data: messages = [] } = useContactMessages(id);
+  const { data: sequences = [] } = useContactActiveSequences(id);
   const qc = useQueryClient();
   const updateContact = useUpdateContact();
 
@@ -274,16 +273,20 @@ export default function ContactProfilePage() {
     <div className="px-4 md:px-6 pt-4 max-w-2xl mx-auto animate-fade-in">
       {/* Top action row */}
       <div className="flex items-center justify-between -mx-1">
-        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigate(-1)}>
-          <ArrowLeft className="w-5 h-5" strokeWidth={1.5} />
-        </Button>
+        {showBackButton ? (
+          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => navigate(-1)}>
+            <ArrowLeft className="w-5 h-5" strokeWidth={1.5} />
+          </Button>
+        ) : <div />}
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Edit contact" onClick={() => setEditOpen(true)}>
             <Pencil className="w-4 h-4" strokeWidth={1.5} />
           </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Messages" onClick={() => navigate("/messages", { state: { contactId: contact.id } })}>
-            <MessageSquare className="w-4 h-4" strokeWidth={1.5} />
-          </Button>
+          {showBackButton && (
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Messages" onClick={() => navigate("/messages", { state: { contactId: contact.id } })}>
+              <MessageSquare className="w-4 h-4" strokeWidth={1.5} />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Move stage" onClick={() => setMoveDialogOpen(true)}>
             <ArrowRightLeft className="w-4 h-4" strokeWidth={1.5} />
           </Button>
@@ -472,6 +475,11 @@ export default function ContactProfilePage() {
       />
     </div>
   );
+}
+
+export default function ContactProfilePage() {
+  const { id } = useParams<{ id: string }>();
+  return <ContactProfileBody id={id!} showBackButton={true} />;
 }
 
 // --- Move Stage Dialog ---

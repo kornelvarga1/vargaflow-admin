@@ -79,20 +79,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <div className="flex flex-col h-dvh overflow-hidden bg-background">
       <OfflineBanner />
       <div className="flex flex-1 min-h-0">
-        {/* Desktop left rail — slim, icon-only, all 8 items */}
+        {/* Desktop left rail — icon + label */}
         <aside
           aria-label="Primary"
-          className="hidden md:flex w-16 flex-col items-center py-4 gap-1 border-r border-border/40 bg-background shrink-0"
+          className="hidden md:flex w-20 flex-col items-center py-4 gap-0.5 border-r border-border/40 bg-background shrink-0"
         >
           {allNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              title={item.label}
               aria-label={item.label}
               className={({ isActive }) =>
-                `flex items-center justify-center w-10 h-10 rounded-xl transition-colors active-press ${
+                `flex flex-col items-center justify-center w-16 py-2 rounded-xl gap-1 transition-colors active-press ${
                   isActive
                     ? "bg-secondary text-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
@@ -100,6 +99,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               }
             >
               <item.icon className="w-5 h-5" strokeWidth={1.75} />
+              <span className="text-[11px] font-medium leading-none">{item.label}</span>
             </NavLink>
           ))}
         </aside>

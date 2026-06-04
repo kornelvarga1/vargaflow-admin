@@ -20,14 +20,10 @@ serve(async (req) => {
     const text = await req.text();
     const params = new URLSearchParams(text);
 
-    // Validate Twilio signature — public endpoint (verify_jwt=false) so this
-    // is the only auth. Reject spoofed POSTs.
     const paramObj: Record<string, string> = {};
     params.forEach((v, k) => { paramObj[k] = v; });
     const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
     const signature = req.headers.get("X-Twilio-Signature");
-    // Supabase rewrites req.url to an internal http URL stripped of
-    // /functions/v1/...; reconstruct the public URL Twilio actually signed.
     const validationUrl = `https://${new URL(req.url).host}/functions/v1/inbound-call`;
     const valid = await validateTwilioSignature(authToken, signature, validationUrl, paramObj);
     if (!valid) {
@@ -37,7 +33,7 @@ serve(async (req) => {
 
     const from = params.get("From") ?? "";
     const to = params.get("To") ?? "";
-    const dialCallStatus = params.get("DialCallStatus"); // only present on fallback
+    const dialCallStatus = params.get("DialCallStatus");
 
     console.log("[inbound-call] From:", from, "To:", to, "DialCallStatus:", dialCallStatus);
 
@@ -48,7 +44,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Look up business settings by the Twilio number that received the call
     const { data: settings } = await supabase
       .from("settings")
       .select("business_id, my_phone, my_name, company_name")
@@ -60,26 +55,41 @@ serve(async (req) => {
       return emptyTwiml();
     }
 
-    // --- FALLBACK: dial completed without contractor answering ---
-    // Textback is handled by missed-call-text-back via Twilio's status callback.
-    // This function only needs to return empty TwiML so Twilio ends the call.
+    // --- FALLBACK: after forward attempt completes ---
     if (dialCallStatus !== null && dialCallStatus !== undefined) {
-      if (dialCallStatus === "completed") {
-        console.log("[inbound-call] call answered, no action needed");
-      } else {
-        console.log("[inbound-call] missed call (status:", dialCallStatus, ") — textback handled by missed-call-text-back");
+      const answered = dialCallStatus === "completed";
+      console.log("[inbound-call] dial status:", dialCallStatus);
+
+      // Log the call event in message_queue so it shows in the inbox thread
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("id")
+        .eq("phone", from)
+        .maybeSingle();
+
+      if (contact?.id) {
+        await supabase.from("message_queue").insert({
+          contact_id: contact.id,
+          business_id: settings.business_id,
+          message_type: "call",
+          message_content: answered ? "📞 Call answered" : "📞 Missed call",
+          direction: "inbound",
+          status: "received",
+          scheduled_at: new Date().toISOString(),
+          sent_at: new Date().toISOString(),
+        });
       }
+
       return emptyTwiml();
     }
 
-    // --- INITIAL CALL: forward to contractor's phone ---
-    // Use `to` (the business's Twilio number) as callerId so all comms
-    // come from the same number and land in one SMS thread.
-    console.log("[inbound-call] forwarding to:", settings.my_phone);
+    // --- INITIAL CALL: forward to Kornél's phone ---
+    // Pass through real caller ID (from) so Dingtone shows who's calling.
+    console.log("[inbound-call] forwarding to:", settings.my_phone, "caller:", from);
 
     return twiml(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial timeout="${FORWARD_TIMEOUT_SECONDS}" action="${FUNCTION_URL}" callerId="${to}">
+  <Dial timeout="${FORWARD_TIMEOUT_SECONDS}" action="${FUNCTION_URL}" callerId="${from}">
     <Number>${settings.my_phone}</Number>
   </Dial>
 </Response>`);

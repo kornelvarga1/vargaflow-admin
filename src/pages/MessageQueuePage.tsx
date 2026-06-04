@@ -450,11 +450,24 @@ export default function MessageQueuePage() {
                       <p className="font-semibold text-[15px] flex-1 truncate text-foreground">{selectedContact.full_name}</p>
                     </Link>
                     {selectedContact.phone && (
-                      <a href={`tel:${selectedContact.phone}`} className="shrink-0">
-                        <Button variant="ghost" size="icon" className="h-9 w-9">
+                      <div className="shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={async () => {
+                            toast.info("Calling you now…");
+                            const { error } = await invokeFunction("initiate-call", {
+                              contact_id: selectedContact.id,
+                              to_phone: selectedContact.phone,
+                              business_id: ADMIN_BUSINESS_ID,
+                            });
+                            if (error) toast.error("Call failed");
+                          }}
+                        >
                           <Phone className="w-4 h-4" strokeWidth={1.5} />
                         </Button>
-                      </a>
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap pl-1">
@@ -573,6 +586,21 @@ function MessageBubble({ message }: { message: Message }) {
   const isOutbound = message.direction === "outbound";
   const isPending = message.status === "pending";
   const isCancelled = message.status === "cancelled";
+  const isCall = message.message_type === "call";
+
+  if (isCall) {
+    return (
+      <div className="flex justify-center">
+        <div
+          className="flex items-center gap-1.5 text-xs text-muted-foreground bg-secondary/60 rounded-full px-3 py-1.5 select-none"
+          title={format(new Date(message.sent_at || message.scheduled_at), "MMM d, yyyy · h:mm a")}
+        >
+          <Phone className="w-3 h-3" strokeWidth={1.5} />
+          {message.message_content}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>

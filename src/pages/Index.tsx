@@ -9,13 +9,13 @@ import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
 const OUTREACH_STAGES = [
   { key: "Cold List",                  label: "Cold List" },
   { key: "Sequence Active",            label: "In Sequence" },
+  { key: "Not Interested",             label: "Not Interested" },
   { key: "Replied",                    label: "Replied" },
   { key: "Interested – Positive Reply",label: "Interested" },
   { key: "Follow-up 1",                label: "Follow-up 1" },
   { key: "Follow-up 2",                label: "Follow-up 2" },
   { key: "Follow-up 3",                label: "Follow-up 3" },
   { key: "Appt Set",                   label: "Appt Set" },
-  { key: "Not Interested",             label: "Not Interested" },
 ];
 import { Button } from "@/components/ui/button";
 import {

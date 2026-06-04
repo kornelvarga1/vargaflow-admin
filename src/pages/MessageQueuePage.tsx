@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ContactProfileBody } from "./ContactProfilePage";
+import { useCallDevice } from "@/hooks/useCallDevice";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { invokeFunction } from "@/lib/invokeFunction";
@@ -19,6 +20,8 @@ import {
   ArrowUp,
   Zap,
   Phone,
+  PhoneOff,
+  PhoneIncoming,
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -223,6 +226,7 @@ export default function MessageQueuePage() {
   const { data: contacts = [], isLoading: contactsLoading } = useConversationContacts();
   const { data: messages = [], isLoading: msgsLoading } = useConversation(selectedContactId);
   const { data: activeSeq } = useContactActiveSequence(selectedContactId);
+  const { ready: callReady, callState, activeCall, incomingCall, call: startCall, hangup, answer } = useCallDevice();
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { setConversationOpen } = useConversationOpen();
@@ -451,22 +455,21 @@ export default function MessageQueuePage() {
                     </Link>
                     {selectedContact.phone && (
                       <div className="shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9"
-                          onClick={async () => {
-                            toast.info("Calling you now…");
-                            const { error } = await invokeFunction("initiate-call", {
-                              contact_id: selectedContact.id,
-                              to_phone: selectedContact.phone,
-                              business_id: ADMIN_BUSINESS_ID,
-                            });
-                            if (error) toast.error("Call failed");
-                          }}
-                        >
-                          <Phone className="w-4 h-4" strokeWidth={1.5} />
-                        </Button>
+                        {callState === "active" || callState === "connecting" ? (
+                          <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={hangup}>
+                            <PhoneOff className="w-4 h-4" strokeWidth={1.5} />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-9 w-9 ${callReady ? "" : "opacity-40"}`}
+                            disabled={!callReady || callState !== "idle"}
+                            onClick={() => startCall(selectedContact.phone!, selectedContact.id)}
+                          >
+                            <Phone className="w-4 h-4" strokeWidth={1.5} />
+                          </Button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -522,6 +525,33 @@ export default function MessageQueuePage() {
                 })()
               )}
             </div>
+
+            {/* Incoming call banner */}
+            {callState === "incoming" && incomingCall && (
+              <div className="flex items-center justify-between px-4 py-2 bg-primary/10 border-t border-primary/20 shrink-0">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <PhoneIncoming className="w-4 h-4 text-primary animate-pulse" strokeWidth={1.5} />
+                  Incoming call
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" className="h-7 bg-primary hover:brightness-110" onClick={answer}>Answer</Button>
+                  <Button size="sm" variant="ghost" className="h-7 text-destructive hover:text-destructive" onClick={hangup}>Decline</Button>
+                </div>
+              </div>
+            )}
+
+            {/* Active call bar */}
+            {(callState === "active" || callState === "connecting") && (
+              <div className="flex items-center justify-between px-4 py-2 bg-green-500/10 border-t border-green-500/20 shrink-0">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Phone className="w-4 h-4 text-green-600" strokeWidth={1.5} />
+                  {callState === "connecting" ? "Connecting…" : "On call"}
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 text-destructive hover:text-destructive" onClick={hangup}>
+                  <PhoneOff className="w-3.5 h-3.5 mr-1" strokeWidth={1.5} /> End
+                </Button>
+              </div>
+            )}
 
             {/* Compose */}
             <div className="flex-none">

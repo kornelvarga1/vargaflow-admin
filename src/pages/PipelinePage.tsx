@@ -59,7 +59,7 @@ export default function PipelinePage() {
                   {outreachContacts.length} contact{outreachContacts.length === 1 ? "" : "s"} in the outreach pipeline
                 </p>
               </div>
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Button onClick={() => setImportOpen(true)}>
                 <Upload className="w-4 h-4 mr-1.5" strokeWidth={1.5} /> Import CSV
               </Button>
             </div>

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings, sendEmailWithUnsubscribe, validateWebhookToken } from "../_shared/utils.ts";
+import { getSettings, notifyAdmin, sendEmailWithUnsubscribe, validateWebhookToken } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,7 +38,6 @@ serve(async (req) => {
     const bid = business_id ?? contact.business_id;
     const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
-    const myPhone = settings.my_phone || "";
     const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
     const videoLink = settings.software_explanation_video || "[video link]";
@@ -62,6 +61,19 @@ serve(async (req) => {
     const meetingDate = appointment_time ? new Date(appointment_time) : new Date();
 
     const now = Date.now();
+
+    const queueTelegram = async (text: string, scheduledAt: Date) => {
+      if (scheduledAt.getTime() <= now) return;
+      await supabase.from("message_queue").insert({
+        contact_id: contact.id,
+        business_id: bid,
+        message_type: "telegram",
+        message_content: text,
+        scheduled_at: scheduledAt.toISOString(),
+        status: "pending",
+        metadata: {},
+      });
+    };
 
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
       if (scheduledAt.getTime() <= now) return; // skip past-time reminders
@@ -102,17 +114,7 @@ serve(async (req) => {
       .update({ stage: "Launch Call Booked" })
       .eq("id", contact.id);
 
-    if (myPhone) {
-      await supabase.from("message_queue").insert({
-        contact_id: contact.id,
-        business_id: bid,
-        message_type: "sms",
-        message_content: `🚀 Launch call booked by ${contact.full_name}. They just booked for ${apptTimeForMe}. Remember to quality check their account before the call!`,
-        scheduled_at: new Date().toISOString(),
-        status: "pending",
-        metadata: { to: myPhone },
-      });
-    }
+    await notifyAdmin(`🚀 Launch call booked by ${contact.full_name}. They just booked for ${apptTimeForMe}. Remember to quality check their account before the call!`);
 
     // Immediately: confirmation SMS to client
     await supabase.from("message_queue").insert({
@@ -154,9 +156,7 @@ serve(async (req) => {
       `Hey ${firstName}, just a reminder — your launch call with me from ${companyName} is in 24 hours at ${apptTimeForContact}. I'll be sending the Zoom link 10 minutes before 😄`,
       reminder24h
     );
-    if (myPhone) {
-      await queueSMS(myPhone, `24hr reminder — launch call with ${contact.full_name} is tomorrow. Number: ${phone}`, reminder24h);
-    }
+    await queueTelegram(`24hr reminder — launch call with ${contact.full_name} is tomorrow. Number: ${phone}`, reminder24h);
 
     // 1hr before
     const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
@@ -171,9 +171,7 @@ serve(async (req) => {
       `<p>Hey ${firstName}, here's the link to your launch call. Talk to you in 1 hour!</p><p><a href="${zoomLink}">Click here to join</a></p>`,
       reminder1h
     );
-    if (myPhone) {
-      await queueSMS(myPhone, `Launch call with ${contact.full_name} is in 1 hour. Number: ${phone}. Zoom: ${zoomLink}`, reminder1h);
-    }
+    await queueTelegram(`Launch call with ${contact.full_name} is in 1 hour. Number: ${phone}. Zoom: ${zoomLink}`, reminder1h);
 
     // 10min before
     const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
@@ -188,9 +186,7 @@ serve(async (req) => {
       `<p>Hey ${firstName}, here's the link — talk to you in 10 minutes!</p><p><a href="${zoomLink}">Click here to join</a></p>`,
       reminder10m
     );
-    if (myPhone) {
-      await queueSMS(myPhone, `🚀 Launch call with ${contact.full_name} is in 10 minutes — get on Zoom! Number: ${phone}`, reminder10m);
-    }
+    await queueTelegram(`🚀 Launch call with ${contact.full_name} is in 10 minutes — get on Zoom! Number: ${phone}`, reminder10m);
 
     // 3 days after: scam warning
     await queueSMS(

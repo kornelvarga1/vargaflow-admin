@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact } from "@/hooks/useContacts";
 import { useStopContactSequences } from "@/hooks/useSequences";
@@ -8,8 +7,9 @@ import { invokeFunction } from "@/lib/invokeFunction";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, GripVertical, MoreHorizontal, MessageSquareOff, Phone } from "lucide-react";
+import { Plus, GripVertical, MoreHorizontal, MessageSquareOff } from "lucide-react";
 import ContactFormDialog from "@/components/contacts/ContactFormDialog";
+import { ConversationDrawer } from "@/components/inbox/ConversationDrawer";
 import { toast } from "sonner";
 
 interface Stage {
@@ -29,12 +29,13 @@ interface Props {
 }
 
 export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stages, contacts, isLoading, defaultAddStage }: Props) {
-  const navigate = useNavigate();
   const updateContact = useUpdateContact();
   const stopSequences = useStopContactSequences();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [defaultStage, setDefaultStage] = useState(defaultAddStage);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerContact, setDrawerContact] = useState<{ id: string; name: string; phone: string | null } | null>(null);
 
   const handleMarkReplied = async (contact: Contact, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -189,7 +190,7 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
                                 className={`bg-card border border-border/60 rounded-xl cursor-pointer transition-all ${
                                   snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : "hover:bg-secondary/30"
                                 }`}
-                                onClick={() => navigate("/messages", { state: { contactId: contact.id } })}
+                                onClick={() => { setDrawerContact({ id: contact.id, name: contact.full_name, phone: contact.phone ?? null }); setDrawerOpen(true); }}
                               >
                                 <div className="p-3 flex items-start gap-2">
                                   <div
@@ -254,6 +255,14 @@ export default function KanbanBoard({ title, subtitle, addLabel, pipeline, stage
         contact={editing}
         defaultStage={defaultStage}
         defaultPipeline={pipeline}
+      />
+
+      <ConversationDrawer
+        contactId={drawerContact?.id ?? null}
+        contactName={drawerContact?.name ?? ""}
+        contactPhone={drawerContact?.phone ?? null}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
       />
     </div>
   );

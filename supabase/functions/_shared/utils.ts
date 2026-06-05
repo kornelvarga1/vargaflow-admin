@@ -365,6 +365,24 @@ export async function getTwilioFromNumber(
   return fallback;
 }
 
+export async function notifyAdmin(text: string): Promise<void> {
+  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
+  if (!token || !chatId) {
+    console.warn("[notifyAdmin] TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set");
+    return;
+  }
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+  } catch (err) {
+    console.error("[notifyAdmin] Telegram send failed:", err);
+  }
+}
+
 export async function hasPendingMessages(
   supabase: SupabaseClient,
   contactId: string

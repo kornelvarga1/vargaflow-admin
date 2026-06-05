@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getTwilioFromNumber, normalizePhone, validateWebhookToken } from "../_shared/utils.ts";
+import { getTwilioFromNumber, normalizePhone, notifyAdmin, validateWebhookToken } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -174,7 +174,6 @@ serve(async (req) => {
     const resolvedBid = bid ?? settings.business_id;
 
     const myName = settings.my_name || "Kornel";
-    const myPhone = settings.my_phone || "";
     const companyName = settings.company_name || "Local Scaling";
     const videoLink = settings.software_explanation_video || "[video link]";
     const websiteUrl = settings.website_url || "[website]";
@@ -233,6 +232,19 @@ serve(async (req) => {
 
     const now = Date.now();
 
+    const queueTelegram = async (text: string, scheduledAt: Date) => {
+      if (scheduledAt.getTime() <= now) return;
+      await supabase.from("message_queue").insert({
+        contact_id: contact.id,
+        business_id: resolvedBid,
+        message_type: "telegram",
+        message_content: text,
+        scheduled_at: scheduledAt.toISOString(),
+        status: "pending",
+        metadata: {},
+      });
+    };
+
     const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
       if (scheduledAt.getTime() <= now) { console.log("[QUEUE] skipped past-time SMS for:", to, "at:", scheduledAt.toISOString()); return; }
       const { error: qErr } = await supabase.from("message_queue").insert({
@@ -289,14 +301,9 @@ serve(async (req) => {
       `Booked! Your Zoom call with ${myName} is all set for ${appointmentTimeForContact}. — ${myName}`
     );
 
-    // Step 2: Internal SMS immediately
-    console.log("[12] sending internal SMS to myPhone:", myPhone);
-    if (myPhone) {
-      await sendSMS(
-        myPhone,
-        `${contactName} just booked the call. Date: ${appointmentTimeForMe}. Number: ${resolvedPhone}.`
-      );
-    }
+    // Step 2: Internal Telegram notification immediately
+    console.log("[12] sending internal Telegram notification");
+    await notifyAdmin(`${contactName} just booked the call. Date: ${appointmentTimeForMe}. Number: ${resolvedPhone}.`);
 
     if (!hasBookedTag) {
       console.log("[13] first-time booker branch");
@@ -356,9 +363,7 @@ serve(async (req) => {
          <p>Talk soon — ${myName}</p>`,
         reminder1h
       );
-      if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
-      }
+      await queueTelegram(`Sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
 
       const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
       await queueSMS(
@@ -379,9 +384,7 @@ serve(async (req) => {
         `I am on Zoom whenever you're ready. Here's the link if joining on phone: ${meetingLink}`,
         reminder3m
       );
-      if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 3 minutes. Number: ${resolvedPhone}.`, reminder3m);
-      }
+      await queueTelegram(`Sales call with ${contactName} is in 3 minutes. Number: ${resolvedPhone}.`, reminder3m);
 
     } else {
       console.log("[13] returning booker branch");
@@ -425,9 +428,7 @@ serve(async (req) => {
         `See you in an hour! Zoom link is in your Calendly confirmation email — also here: ${meetingLink} — ${myName}`,
         reminder1h
       );
-      if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
-      }
+      await queueTelegram(`Sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
 
       const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
       await queueSMS(
@@ -448,9 +449,7 @@ serve(async (req) => {
         `I am on the call. Let me know if you can't find the link.`,
         reminder5m
       );
-      if (myPhone) {
-        await queueSMS(myPhone, `Your sales call with ${contactName} is in 5 minutes. Number: ${resolvedPhone}.`, reminder5m);
-      }
+      await queueTelegram(`Sales call with ${contactName} is in 5 minutes. Number: ${resolvedPhone}.`, reminder5m);
     }
 
     console.log("[14] all done, logging to automation_logs");

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings, normalizePhone } from "../_shared/utils.ts";
+import { getSettings, normalizePhone, notifyAdmin } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -69,7 +69,6 @@ serve(async (req) => {
       try {
         const settings = await getSettings(supabase, bid).catch(() => null as any);
         const myName = settings?.my_name || "Kornel";
-        const myPhone = settings?.my_phone || "";
         const gmbReviewLink = settings?.gmb_review_link || "[GMB tutorial link]";
 
         const firstName = contact.full_name?.split(" ")[0] ?? "there";
@@ -86,18 +85,8 @@ serve(async (req) => {
         if (updErr) console.error("Contact update failed:", updErr);
 
         // Internal notification
-        if (myPhone) {
-          const { error: notifErr } = await supabase.from("message_queue").insert({
-            contact_id: contact.id,
-            business_id: bid,
-            message_type: "sms",
-            message_content: `${contact.full_name} just submitted their onboarding form. Email: ${contact.email}. Phone: ${phone}`,
-            scheduled_at: new Date(Date.now() + 30 * 1000).toISOString(),
-            status: "pending",
-            metadata: { to: myPhone },
-          });
-          if (notifErr) console.error("Internal notif failed:", notifErr);
-        }
+        await notifyAdmin(`${contact.full_name} just submitted their onboarding form. Email: ${contact.email}. Phone: ${phone}`)
+          .catch((e) => console.error("Internal notif failed:", e));
 
         // SMS to client — GMB access request
         if (phone) {
@@ -125,25 +114,9 @@ serve(async (req) => {
         console.error("Matched-contact flow failed (non-fatal):", flowErr);
       }
     } else {
-      // Unmatched — notify whoever has my_phone set.
+      // Unmatched — notify via Telegram.
       try {
-        const { data: anySettings } = await supabase
-          .from("settings")
-          .select("my_phone")
-          .not("my_phone", "is", null)
-          .limit(1)
-          .maybeSingle();
-        const myPhone = (anySettings as any)?.my_phone || "";
-        if (myPhone) {
-          const { error: notifErr } = await supabase.from("message_queue").insert({
-            message_type: "sms",
-            message_content: `New onboarding form submission (unmatched). Name: ${formData.full_name ?? "?"}. Business: ${formData.business_name ?? "?"}. Email: ${formData.email ?? "?"}. Review in admin.`,
-            scheduled_at: new Date(Date.now() + 30 * 1000).toISOString(),
-            status: "pending",
-            metadata: { to: myPhone },
-          });
-          if (notifErr) console.error("Unmatched notif failed:", notifErr);
-        }
+        await notifyAdmin(`New onboarding form submission (unmatched). Name: ${formData.full_name ?? "?"}. Business: ${formData.business_name ?? "?"}. Email: ${formData.email ?? "?"}. Review in admin.`);
       } catch (notifErr) {
         console.error("Unmatched notification failed (non-fatal):", notifErr);
       }

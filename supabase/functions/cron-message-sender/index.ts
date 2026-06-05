@@ -429,6 +429,21 @@ async function sendEmail(
   if (!res.ok) throw new Error(`Resend error: ${data.message}`);
 }
 
+async function sendTelegram(text: string): Promise<void> {
+  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const chatId = Deno.env.get("TELEGRAM_CHAT_ID");
+  if (!token || !chatId) throw new Error("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set");
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(`Telegram error: ${data.description ?? res.statusText}`);
+  }
+}
+
 async function invokeFunctionCall(
   functionName: string,
   payload: Record<string, unknown>
@@ -812,6 +827,14 @@ serve(async (_req) => {
           } catch (logErr) {
             console.error(`Activity log failed for email message ${msg.id}:`, logErr);
           }
+
+        } else if (msg.message_type === "telegram") {
+          await sendTelegram(msg.message_content);
+
+          await supabase
+            .from("message_queue")
+            .update({ status: "sent", sent_at: new Date().toISOString() })
+            .eq("id", msg.id);
 
         } else if (msg.message_type === "function_call") {
           const functionName = msg.metadata?.function_name;

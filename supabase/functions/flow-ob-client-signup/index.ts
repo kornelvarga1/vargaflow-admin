@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings, getTwilioFromNumber, sendEmailWithUnsubscribe } from "../_shared/utils.ts";
+import { getSettings, getTwilioFromNumber, notifyAdmin, sendEmailWithUnsubscribe } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +29,6 @@ serve(async (req) => {
     const bid = business_id ?? contact.business_id;
     const settings = await getSettings(supabase, bid);
     const myName = settings.my_name || "Kornel";
-    const myPhone = settings.my_phone || "";
     const myEmail = settings.my_email || "hello@vargaflow.com";
     const companyName = settings.company_name || "Local Scaling";
     const onboardingFormLink = settings.onboarding_form_link || "https://vargaflow.com/onboarding-form";
@@ -107,12 +106,7 @@ serve(async (req) => {
     });
 
     // Internal notification
-    if (myPhone) {
-      await sendSMS(
-        myPhone,
-        `🙌 New client signup! ${contact.full_name} just signed up. Email: ${email}. Phone: ${phone}`
-      );
-    }
+    await notifyAdmin(`🙌 New client signup! ${contact.full_name} just signed up. Email: ${email}. Phone: ${phone}`);
 
     const currentTags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
     const updatedTags = currentTags.includes("Needs to Fill Out Onboarding Form") ? currentTags : [...currentTags, "Needs to Fill Out Onboarding Form"];

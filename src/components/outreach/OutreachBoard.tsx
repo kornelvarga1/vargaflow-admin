@@ -1,5 +1,4 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact, OUTREACH_STAGES } from "@/hooks/useContacts";
 import { logActivity } from "@/hooks/useActivityLog";
@@ -15,6 +14,7 @@ import { useAddToDNC } from "@/hooks/useDNC";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import EnrollDialog from "@/components/outreach/EnrollDialog";
+import { ConversationDrawer } from "@/components/inbox/ConversationDrawer";
 
 const ANGLE_LABEL: Record<string, string> = {
   free_website: "Free Website",
@@ -64,13 +64,14 @@ interface Props {
 }
 
 export default function OutreachBoard({ contacts, isLoading }: Props) {
-  const navigate = useNavigate();
   const updateContact = useUpdateContact();
   const addToDNC = useAddToDNC();
   const [angleFilter, setAngleFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [enrollOpen, setEnrollOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerContact, setDrawerContact] = useState<{ id: string; name: string; phone: string | null } | null>(null);
 
   const toggleOne = (id: string) =>
     setSelected((prev) => {
@@ -295,7 +296,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                                   className={`bg-card border rounded-xl cursor-pointer transition-all ${
                                     isSelected ? "border-primary/60 bg-secondary/40" : "border-border/60 hover:bg-secondary/30"
                                   } ${snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : ""}`}
-                                  onClick={() => navigate("/messages", { state: { contactId: contact.id } })}
+                                  onClick={() => { setDrawerContact({ id: contact.id, name: contact.full_name, phone: contact.phone ?? null }); setDrawerOpen(true); }}
                                 >
                                   <div className="p-3 flex items-start gap-2">
                                     <div
@@ -385,6 +386,14 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
         onOpenChange={setEnrollOpen}
         contactIds={[...selected]}
         onEnrolled={clearSelection}
+      />
+
+      <ConversationDrawer
+        contactId={drawerContact?.id ?? null}
+        contactName={drawerContact?.name ?? ""}
+        contactPhone={drawerContact?.phone ?? null}
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
       />
     </div>
   );

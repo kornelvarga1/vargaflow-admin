@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { normalizePhone, validateTwilioSignature } from "../_shared/utils.ts";
+import { normalizePhone, notifyAdmin, validateTwilioSignature } from "../_shared/utils.ts";
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
@@ -319,56 +319,22 @@ serve(async (req) => {
         console.error("[inbound-sms] failed to cancel pending messages:", cancelErr);
       }
 
-      // Send outreach-specific notification to my_phone.
+      // Notify via Telegram.
       try {
-        if (settings.my_phone) {
-          const twilioSid  = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-          const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-          const twilioFrom = settings.twilio_phone_number ?? Deno.env.get("TWILIO_PHONE_NUMBER")!;
-          const preview    = body.slice(0, 200) + (body.length > 200 ? "…" : "");
-          const tag        = isNegative ? "DNC" : "REPLY";
-          const message    = `[${tag}] New reply from ${angleLabel} | ${from} | ${preview}`;
-
-          await fetch(
-            `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-                Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
-              },
-              body: new URLSearchParams({ To: settings.my_phone, From: twilioFrom, Body: message }),
-            },
-          );
-        }
+        const preview = body.slice(0, 200) + (body.length > 200 ? "…" : "");
+        const tag     = isNegative ? "DNC" : "REPLY";
+        await notifyAdmin(`[${tag}] New reply from ${angleLabel} | ${from} | ${preview}`);
       } catch (notifyErr) {
         console.error("[inbound-sms] outreach notification failed:", notifyErr);
       }
     }
 
-    // 5. Notify contractor via SMS (direct Twilio — not queued, so it never appears in the inbox).
-    //    Skipped for outreach replies; they got their own notification above.
+    // 5. Notify via Telegram — skipped for outreach replies (already handled above).
     try {
-      if (!outreachHandled && settings.my_phone) {
-        const twilioSid   = Deno.env.get("TWILIO_ACCOUNT_SID")!;
-        const twilioAuth  = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-        const twilioFrom  = settings.twilio_phone_number ?? Deno.env.get("TWILIO_PHONE_NUMBER")!;
+      if (!outreachHandled) {
         const contactName = existing?.full_name ?? from;
         const preview     = body.slice(0, 100) + (body.length > 100 ? "…" : "");
-        const appLink     = contactBusinessId ? APP_URL : (Deno.env.get("ADMIN_APP_URL") ?? APP_URL);
-        const message     = `Reply from ${contactName}: "${preview}"\n${appLink}/messages`;
-
-        await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
-            },
-            body: new URLSearchParams({ To: settings.my_phone, From: twilioFrom, Body: message }),
-          }
-        );
+        await notifyAdmin(`Reply from ${contactName}: "${preview}"\n${APP_URL}/messages`);
       }
     } catch (notifyErr) {
       console.error("[inbound-sms] contractor notification failed:", notifyErr);

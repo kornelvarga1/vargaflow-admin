@@ -56,12 +56,18 @@ async function generateAccessToken(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
+  let identity = "admin";
+  try {
+    const body = await req.json();
+    if (body?.business_id) identity = body.business_id;
+  } catch { /* no body — default to admin */ }
+
   const token = await generateAccessToken(
     Deno.env.get("TWILIO_ACCOUNT_SID")!,
     Deno.env.get("TWILIO_API_KEY_SID")!,
     Deno.env.get("TWILIO_API_KEY_SECRET")!,
     Deno.env.get("TWILIO_TWIML_APP_SID")!,
-    "admin",
+    identity,
   );
 
   return json({ token });

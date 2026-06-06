@@ -61,11 +61,19 @@ export function useContacts(pipeline?: string) {
   return useQuery({
     queryKey: ["contacts", pipeline],
     queryFn: async () => {
-      let query = supabase.from("contacts").select("*").is("business_id", null).order("created_at", { ascending: false }).limit(10000);
-      if (pipeline) query = query.eq("pipeline", pipeline);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Contact[];
+      const pageSize = 1000;
+      let from = 0;
+      let all: Contact[] = [];
+      while (true) {
+        let query = supabase.from("contacts").select("*").is("business_id", null).order("created_at", { ascending: false }).range(from, from + pageSize - 1);
+        if (pipeline) query = query.eq("pipeline", pipeline);
+        const { data, error } = await query;
+        if (error) throw error;
+        all = all.concat((data ?? []) as Contact[]);
+        if (!data || data.length < pageSize) break;
+        from += pageSize;
+      }
+      return all;
     },
   });
 }

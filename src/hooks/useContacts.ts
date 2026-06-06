@@ -61,7 +61,7 @@ export function useContacts(pipeline?: string) {
   return useQuery({
     queryKey: ["contacts", pipeline],
     queryFn: async () => {
-      let query = supabase.from("contacts").select("*").is("business_id", null).order("created_at", { ascending: false });
+      let query = supabase.from("contacts").select("*").is("business_id", null).order("created_at", { ascending: false }).limit(10000);
       if (pipeline) query = query.eq("pipeline", pipeline);
       const { data, error } = await query;
       if (error) throw error;

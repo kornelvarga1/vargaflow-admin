@@ -77,9 +77,14 @@ export default function ContactsPage() {
 
   return (
     <div className="px-4 md:px-6 pt-8 max-w-2xl mx-auto animate-fade-in">
-      <header className="px-1">
-        <h1 className="font-serif text-3xl text-foreground">Contacts</h1>
-        <p className="text-sm text-muted-foreground mt-1">{contacts.length} total</p>
+      <header className="flex items-center justify-between gap-4 px-1">
+        <div>
+          <h1 className="font-serif text-3xl text-foreground">Contacts</h1>
+          <p className="text-sm text-muted-foreground mt-1">{contacts.length} total</p>
+        </div>
+        <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+          <Plus className="w-4 h-4 mr-1" strokeWidth={1.75} /> Add Contact
+        </Button>
       </header>
 
       <div className="relative mt-6">
@@ -200,17 +205,7 @@ export default function ContactsPage() {
 
       <div className="h-12" />
 
-      {/* FAB — sits above the floating tab bar on mobile, above safe area on desktop */}
-      <button
-        onClick={() => { setEditing(null); setDialogOpen(true); }}
-        aria-label="Add contact"
-        className="fixed right-5 z-30 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-fab flex items-center justify-center active-press hover:brightness-110 transition"
-        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
-      >
-        <Plus className="w-5 h-5" strokeWidth={2.25} />
-      </button>
-
-      <ContactFormDialog
+<ContactFormDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         contact={editing}

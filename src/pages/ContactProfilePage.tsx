@@ -4,8 +4,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { invokeFunction } from "@/lib/invokeFunction";
 import { ADMIN_BUSINESS_ID } from "@/lib/constants";
-import { useUpdateContact, SALES_STAGES, ONBOARDING_STAGES, type Contact } from "@/hooks/useContacts";
+import { useUpdateContact, SALES_STAGES, ONBOARDING_STAGES, OUTREACH_STAGES, type Contact } from "@/hooks/useContacts";
 import { logActivity } from "@/hooks/useActivityLog";
+import { useAddToDNC } from "@/hooks/useDNC";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +32,10 @@ import {
   Activity,
   Loader2,
   Copy,
+  MoreHorizontal,
+  ThumbsUp,
+  CalendarCheck,
+  Ban,
 } from "lucide-react";
 import ContactFormDialog from "@/components/contacts/ContactFormDialog";
 import { toast } from "sonner";
@@ -168,6 +174,7 @@ export function ContactProfileBody({ id, showBackButton = true }: { id: string; 
   const { data: sequences = [] } = useContactActiveSequences(id);
   const qc = useQueryClient();
   const updateContact = useUpdateContact();
+  const addToDNC = useAddToDNC();
 
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
@@ -269,6 +276,35 @@ export function ContactProfileBody({ id, showBackButton = true }: { id: string; 
     toast.success("Sequence cancelled");
   };
 
+  const maybeEnrollWarm = async (c: Contact, newStage: string) => {
+    if (newStage !== "Interested – Positive Reply") return;
+    if (c.outreach_angle !== "leads_incentive") return;
+    const { error } = await invokeFunction("flow-outreach-warm-enroll", { contact_id: c.id });
+    if (error) toast.error("Warm sequence enroll failed", { description: String(error) });
+  };
+
+  const moveTo = async (stage: string) => {
+    try {
+      await updateContact.mutateAsync({ id: contact.id, stage, stage_entered_at: new Date().toISOString() });
+      await logActivity("stage_changed", `moved to ${stage}`, contact.id);
+      const label = OUTREACH_STAGES.find(s => s.key === stage)?.label || stage;
+      toast.success(`${contact.full_name} → ${label}`);
+      await maybeEnrollWarm(contact, stage);
+    } catch {
+      toast.error("Failed to update stage");
+    }
+  };
+
+  const handleDNC = async () => {
+    if (!contact.phone) { toast.error("Contact has no phone number"); return; }
+    try {
+      await addToDNC.mutateAsync({ phone: contact.phone, reason: "manual", source_workflow: contact.outreach_angle ?? null, contact_id: contact.id });
+      toast.success(`${contact.full_name} DNC'd`, { description: "Sequences stopped, stage → Not Interested." });
+    } catch (err) {
+      toast.error("Failed to DNC", { description: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
   return (
     <div className="px-4 md:px-6 pt-4 max-w-2xl mx-auto animate-fade-in">
       {/* Top action row */}
@@ -290,6 +326,32 @@ export function ContactProfileBody({ id, showBackButton = true }: { id: string; 
           <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" title="Move stage" onClick={() => setMoveDialogOpen(true)}>
             <ArrowRightLeft className="w-4 h-4" strokeWidth={1.5} />
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground">
+                <MoreHorizontal className="w-4 h-4" strokeWidth={1.5} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {contact.pipeline === "Outreach" && (
+                <>
+                  <DropdownMenuItem onClick={() => moveTo("Interested – Positive Reply")}>
+                    <ThumbsUp className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Interested
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => moveTo("Follow-up 1")}>
+                    <ArrowRightLeft className="w-4 h-4 mr-2" strokeWidth={1.5} /> Follow-up 1
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => moveTo("Appt Set")}>
+                    <CalendarCheck className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Appt Set
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleDNC}>
+                <Ban className="w-4 h-4 mr-2" strokeWidth={1.5} /> DNC
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

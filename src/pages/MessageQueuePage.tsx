@@ -226,7 +226,7 @@ export default function MessageQueuePage() {
   const { data: contacts = [], isLoading: contactsLoading } = useConversationContacts();
   const { data: messages = [], isLoading: msgsLoading } = useConversation(selectedContactId);
   const { data: activeSeq } = useContactActiveSequence(selectedContactId);
-  const { ready: callReady, callState, activeCall, incomingCall, call: startCall, hangup, answer } = useCallDevice();
+  const { ready: callReady, callState, activeCall, incomingCall, call: startCall, hangup, answer } = useCallDevice(ADMIN_BUSINESS_ID);
   const [optimisticMessages, setOptimisticMessages] = useState<Message[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { setConversationOpen } = useConversationOpen();

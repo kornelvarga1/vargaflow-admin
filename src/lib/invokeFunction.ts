@@ -12,5 +12,18 @@ export async function invokeFunction<T = unknown>(name: string, body?: unknown) 
   if (session?.access_token) {
     headers["X-User-Auth"] = `Bearer ${session.access_token}`;
   }
-  return supabase.functions.invoke<T>(name, { body, headers });
+  const result = await supabase.functions.invoke<T>(name, { body, headers });
+  // When a function returns non-2xx, the SDK gives { data: null, error: FunctionsHttpError }
+  // with the actual JSON body trapped in error.context. Extract it so callers surface the
+  // real message instead of the generic "Edge Function returned a non-2xx status code".
+  if (result.error && !result.data) {
+    try {
+      const ctx = (result.error as unknown as { context?: Response }).context;
+      if (ctx instanceof Response) {
+        const errBody = await ctx.json();
+        if (errBody?.error) return { data: null, error: new Error(errBody.error) };
+      }
+    } catch { /* ignore — fall through to original error */ }
+  }
+  return result;
 }

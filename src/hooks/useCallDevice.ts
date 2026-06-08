@@ -4,7 +4,7 @@ import { invokeFunction } from "@/lib/invokeFunction";
 
 export type CallState = "idle" | "connecting" | "active" | "incoming";
 
-export function useCallDevice() {
+export function useCallDevice(businessId?: string) {
   const deviceRef = useRef<Device | null>(null);
   const [callState, setCallState] = useState<CallState>("idle");
   const [activeCall, setActiveCall] = useState<Call | null>(null);
@@ -15,7 +15,7 @@ export function useCallDevice() {
     let device: Device;
 
     const init = async () => {
-      const { data, error } = await invokeFunction<{ token: string }>("twilio-token");
+      const { data, error } = await invokeFunction<{ token: string }>("twilio-token", businessId ? { business_id: businessId } : undefined);
       if (error || !data?.token) {
         console.error("[callDevice] token fetch failed:", error);
         return;
@@ -44,7 +44,7 @@ export function useCallDevice() {
       device?.unregister();
       device?.destroy();
     };
-  }, []);
+  }, [businessId]);
 
   const call = useCallback(async (toPhone: string, contactId: string) => {
     const device = deviceRef.current;
@@ -52,7 +52,7 @@ export function useCallDevice() {
 
     setCallState("connecting");
     try {
-      const c = await device.connect({ params: { To: toPhone, ContactId: contactId } });
+      const c = await device.connect({ params: { To: toPhone, ContactId: contactId, ...(businessId ? { BusinessId: businessId } : {}) } });
       setActiveCall(c);
       setCallState("active");
       c.on("disconnect", () => { setActiveCall(null); setCallState("idle"); });

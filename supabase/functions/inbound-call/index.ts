@@ -61,18 +61,23 @@ serve(async (req) => {
       console.log("[inbound-call] dial status:", dialCallStatus);
 
       // Log the call event in message_queue so it shows in the inbox thread
-      const { data: contact } = await supabase
+      console.log("[inbound-call] callback from:", from, "status:", dialCallStatus, "business:", settings.business_id);
+
+      const { data: contact, error: contactErr } = await supabase
         .from("contacts")
         .select("id")
         .eq("phone", from)
+        .eq("business_id", settings.business_id)
         .maybeSingle();
+
+      console.log("[inbound-call] contact lookup:", contact?.id ?? "not found", contactErr?.message ?? "");
 
       if (contact?.id) {
         await supabase.from("message_queue").insert({
           contact_id: contact.id,
           business_id: settings.business_id,
           message_type: "call",
-          message_content: answered ? "📞 Call answered" : "📞 Missed call",
+          message_content: answered ? "Call answered" : "Missed call",
           direction: "inbound",
           status: "received",
           scheduled_at: new Date().toISOString(),
@@ -83,8 +88,7 @@ serve(async (req) => {
       return emptyTwiml();
     }
 
-    // --- INITIAL CALL: forward to Kornél's phone ---
-    // Pass through real caller ID (from) so Dingtone shows who's calling.
+    // --- INITIAL CALL: forward to real phone, log result via action callback ---
     console.log("[inbound-call] forwarding to:", settings.my_phone, "caller:", from);
 
     return twiml(`<?xml version="1.0" encoding="UTF-8"?>

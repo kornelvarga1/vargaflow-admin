@@ -125,9 +125,9 @@ function Compose({ contactId, contactName, contactPhone, onSent, onOptimistic, o
       const { data: cd } = await supabase.from("contacts").select("business_id").eq("id", contactId).single();
       const businessId = cd?.business_id ?? ADMIN_BUSINESS_ID;
       const { data, error } = await invokeFunction<{ error?: string }>("send-manual-sms", { contact_id: contactId, business_id: businessId, message: content, to_phone: contactPhone });
-      if (error || data?.error) { onRollback(scheduledAt); setText(content); throw new Error(data?.error ?? "Send failed"); }
+      if (error || data?.error) { onRollback(scheduledAt); setText(content); throw error ?? new Error(data?.error ?? "Send failed"); }
       onSent();
-    } catch { toast.error("Failed to send message"); } finally { setSending(false); }
+    } catch (err) { toast.error("Failed to send message", { description: err instanceof Error ? err.message : undefined }); } finally { setSending(false); }
   };
 
   const handleSuggest = async () => {

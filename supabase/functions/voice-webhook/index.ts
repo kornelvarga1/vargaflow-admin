@@ -24,14 +24,12 @@ serve(async (req) => {
 
   const to = params.get("To") ?? "";
   const from = params.get("From") ?? "";
+  const businessId = params.get("BusinessId");
 
-  console.log("[voice-webhook] outbound call To:", to, "From:", from);
+  console.log("[voice-webhook] To:", to, "From:", from, "BusinessId:", businessId);
+  console.log("[voice-webhook] all params:", JSON.stringify(Object.fromEntries(params)));
 
   if (!to) return twiml("<Response><Hangup/></Response>");
-
-  // Look up Twilio number from settings to use as callerId.
-  // BusinessId is passed from the client app so we get the right number per contractor.
-  const businessId = params.get("BusinessId");
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -44,6 +42,24 @@ serve(async (req) => {
     : await query.limit(1).maybeSingle();
 
   const callerId = settings?.twilio_phone_number ?? from;
+
+  const contactId = params.get("ContactId");
+  if (contactId && businessId) {
+    const now = new Date().toISOString();
+    supabase.from("message_queue").insert({
+      contact_id: contactId,
+      business_id: businessId,
+      message_type: "call",
+      message_content: "Outbound call",
+      scheduled_at: now,
+      sent_at: now,
+      status: "sent",
+      direction: "outbound",
+      metadata: { to, call_sid: params.get("CallSid") },
+    }).then(({ error }) => {
+      if (error) console.error("[voice-webhook] log error:", error.message);
+    });
+  }
 
   return twiml(`<?xml version="1.0" encoding="UTF-8"?>
 <Response>

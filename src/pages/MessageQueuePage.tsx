@@ -577,14 +577,16 @@ export default function MessageQueuePage() {
       {selectedContactId && (
         <>
           <div
-            className="hidden xl:flex w-px shrink-0 cursor-col-resize bg-border/30 hover:bg-primary/30 transition-colors"
+            className="hidden xl:flex w-3 shrink-0 cursor-col-resize items-center justify-center group"
             onMouseDown={(e) => {
               e.preventDefault();
               isDragging.current = true;
               document.body.style.cursor = "col-resize";
               document.body.style.userSelect = "none";
             }}
-          />
+          >
+            <div className="w-px h-full bg-border/30 group-hover:bg-primary/30 transition-colors" />
+          </div>
           <div className="hidden xl:flex flex-col overflow-y-auto shrink-0 bg-secondary" style={{ width: rightWidth }}>
             <ContactProfileBody id={selectedContactId} showBackButton={false} />
           </div>

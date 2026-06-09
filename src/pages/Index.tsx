@@ -5,6 +5,7 @@ import EvolutionStrip from "@/components/dashboard/EvolutionStrip";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { useOutreachRunway } from "@/hooks/useOutreachRunway";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
+import { useUIPreferences } from "@/hooks/useUIPreferences";
 
 const OUTREACH_STAGES = [
   { key: "Cold List",                  label: "Cold List" },
@@ -44,7 +45,9 @@ const PERIODS: { days: number; label: string }[] = [
 ];
 
 export default function Index() {
-  const [period, setPeriod] = useState(30);
+  const { prefs, setPref } = useUIPreferences();
+  const period: number = (prefs.dashboard_period as number) ?? 30;
+  const setPeriod = (days: number) => setPref("dashboard_period", days);
   const { data: stats, isLoading: statsLoading } = useDashboardStats(period);
   const { data: activities = [], isLoading: actLoading } = useActivityLog(50);
   const { data: runway } = useOutreachRunway();

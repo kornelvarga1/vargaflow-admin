@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useUIPreferences } from "@/hooks/useUIPreferences";
 import {
   AreaChart,
   Area,
@@ -190,8 +191,19 @@ function ChartTooltip({ active, payload }: TooltipProps) {
 }
 
 export default function GrowthPage() {
-  const [inputs, setInputs] = useState<Inputs>(loadInputs);
-  const [months, setMonths] = useState(12);
+  const { prefs, setPref, isLoading: prefsLoading } = useUIPreferences();
+
+  const inputs: Inputs = prefs.growth_inputs
+    ? { ...DEFAULTS, ...(prefs.growth_inputs as Inputs) }
+    : loadInputs();
+  const months: number = (prefs.growth_months as number) ?? 12;
+
+  const setInputs = (updater: Inputs | ((prev: Inputs) => Inputs)) => {
+    const next = typeof updater === "function" ? updater(inputs) : updater;
+    setPref("growth_inputs", next, 600);
+  };
+  const setMonths = (m: number) => setPref("growth_months", m);
+
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   useEffect(() => {
@@ -199,12 +211,6 @@ export default function GrowthPage() {
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
   }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(inputs));
-    } catch {}
-  }, [inputs]);
 
   const set = (key: keyof Inputs) => (v: number) =>
     setInputs((prev) => ({ ...prev, [key]: v }));

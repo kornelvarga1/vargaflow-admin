@@ -63,43 +63,35 @@ function useConversationContacts() {
   return useQuery({
     queryKey: ["conversation_contacts"],
     queryFn: async () => {
+      // Single JOIN query — avoids a second request with hundreds of IDs in the URL
+      // which exceeds Cloudflare's URL length limit and silently returns nothing.
       const { data: messages, error } = await supabase
         .from("message_queue")
-        .select("contact_id, message_content, scheduled_at, sent_at, status, message_type, created_at, direction")
+        .select(`
+          contact_id, message_content, scheduled_at, sent_at, status, message_type, created_at, direction,
+          contact:contacts!contact_id(id, full_name, phone, pipeline, stage, last_read_at, business_id)
+        `)
         .or(`business_id.is.null,business_id.eq.${ADMIN_BUSINESS_ID}`)
         .in("status", ["sent", "received"])
+        .not("contact_id", "is", null)
         .order("sent_at", { ascending: false })
         .limit(2000);
 
       if (error) throw error;
 
-      const contactIds = [...new Set((messages || []).map((m) => m.contact_id).filter((id): id is string => id !== null))];
-      if (contactIds.length === 0) return [];
-
-      const { data: contacts, error: contactsError } = await supabase
-        .from("contacts")
-        .select("id, full_name, phone, pipeline, stage, last_read_at")
-        .is("business_id", null)
-        .in("id", contactIds);
-
-      if (contactsError) throw contactsError;
-      if (!contacts || contacts.length === 0) return [];
-
-      const contactMap = new Map(contacts.map((c) => [c.id, c]));
       const convos: ConversationContact[] = [];
+      const groupedByContact = new Map<string, { msgs: typeof messages; contact: { id: string; full_name: string; phone: string | null; pipeline: string; stage: string; last_read_at: string | null } }>();
 
-      const groupedByContact = new Map<string, typeof messages>();
       for (const msg of messages || []) {
+        const contact = (msg as any).contact;
+        if (!contact || contact.business_id !== null) continue;
         if (!groupedByContact.has(msg.contact_id)) {
-          groupedByContact.set(msg.contact_id, []);
+          groupedByContact.set(msg.contact_id, { msgs: [], contact });
         }
-        groupedByContact.get(msg.contact_id)!.push(msg);
+        groupedByContact.get(msg.contact_id)!.msgs.push(msg);
       }
 
-      for (const [contactId, msgs] of groupedByContact) {
-        const contact = contactMap.get(contactId);
-        if (!contact) continue;
-
+      for (const { msgs, contact } of groupedByContact.values()) {
         const latest = msgs[0];
         convos.push({
           id: contact.id,
@@ -114,7 +106,7 @@ function useConversationContacts() {
             (m) =>
               m.direction === "inbound" &&
               m.status === "received" &&
-              (!contact.last_read_at || new Date(m.created_at) > new Date(contact.last_read_at))
+              (!contact.last_read_at || new Date((m as any).created_at) > new Date(contact.last_read_at))
           ),
           messageCount: msgs.length,
         });

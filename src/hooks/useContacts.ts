@@ -41,6 +41,7 @@ export const OUTREACH_STAGES = [
   { key: "Follow-up 1", label: "Follow-up 1" },
   { key: "Follow-up 2", label: "Follow-up 2" },
   { key: "Follow-up 3", label: "Follow-up 3" },
+  { key: "Long-term nurture", label: "Long-term nurture" },
   { key: "Appt Set", label: "Appt Set" },
   { key: "Not Interested", label: "Not Interested" },
   { key: "Stale", label: "Stale" },

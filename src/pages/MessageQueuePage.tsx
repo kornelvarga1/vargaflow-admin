@@ -69,7 +69,6 @@ function useConversationContacts() {
         .or(`business_id.is.null,business_id.eq.${ADMIN_BUSINESS_ID}`)
         .in("status", ["sent", "received"])
         .order("sent_at", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
         .limit(2000);
 
       if (error) throw error;

@@ -189,6 +189,7 @@ serve(async (req) => {
         message_content: body,
         to_phone:        from,
         scheduled_at:    now,
+        sent_at:         now,
         metadata:        { from, to, message_sid: messageSid },
       })
       .select("id")

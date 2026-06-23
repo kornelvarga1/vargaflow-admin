@@ -95,6 +95,7 @@ serve(async (req) => {
 <Response>
   <Dial timeout="${FORWARD_TIMEOUT_SECONDS}" action="${FUNCTION_URL}" callerId="${from}">
     <Number>${settings.my_phone}</Number>
+    <Client>${settings.business_id}</Client>
   </Dial>
 </Response>`);
 

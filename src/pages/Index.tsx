@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useDashboardStats } from "@/hooks/useDashboardStats";
-import EvolutionStrip from "@/components/dashboard/EvolutionStrip";
+import DashboardNotes from "@/components/dashboard/DashboardNotes";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { useOutreachRunway } from "@/hooks/useOutreachRunway";
 import { SALES_STAGES, ONBOARDING_STAGES } from "@/hooks/useContacts";
@@ -61,7 +61,7 @@ export default function Index() {
         <span className="font-serif italic text-sm text-muted-foreground/50">Just win.</span>
       </header>
 
-      <EvolutionStrip />
+      <DashboardNotes />
 
       {/* Stats */}
       <div className="mt-5">

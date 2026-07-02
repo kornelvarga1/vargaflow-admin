@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import EvolutionStrip from "@/components/dashboard/EvolutionStrip";
 import { useUIPreferences } from "@/hooks/useUIPreferences";
 import {
   AreaChart,
@@ -243,6 +244,8 @@ export default function GrowthPage() {
         <h1 className="font-serif text-3xl text-foreground">Growth</h1>
         <p className="text-sm text-muted-foreground mt-1">Adjust the funnel, see the money.</p>
       </header>
+
+      <EvolutionStrip />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {/* Inputs */}

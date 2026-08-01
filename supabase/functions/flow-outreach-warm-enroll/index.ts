@@ -5,7 +5,11 @@ import { authErrorResponse, getSettings, requireAdmin, resolveTemplate } from ".
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
-const WARM_SEQUENCE_NAME = "Outreach — Leads Incentive (Warm)";
+
+const WARM_SEQUENCE_BY_ANGLE: Record<string, string> = {
+  leads_incentive: "Outreach — Leads Incentive (Warm)",
+  free_trial_incentive: "Outreach — Free Trial Incentive (Warm)",
+};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -66,8 +70,10 @@ serve(async (req) => {
   try {
     await requireAdmin(req);
 
-    const { contact_id } = await req.json();
+    const { contact_id, angle } = await req.json();
     if (!contact_id) return json(400, { error: "contact_id required" });
+    const WARM_SEQUENCE_NAME = WARM_SEQUENCE_BY_ANGLE[angle];
+    if (!WARM_SEQUENCE_NAME) return json(400, { error: `no warm sequence for angle: ${angle}` });
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 

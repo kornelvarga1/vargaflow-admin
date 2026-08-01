@@ -13,6 +13,7 @@ const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
 const SEQUENCE_BY_ANGLE: Record<string, string> = {
   free_website: "Outreach — Free Website Incentive",
   leads_incentive: "Outreach — Leads Incentive",
+  free_trial_incentive: "Outreach — Free Trial Incentive",
 };
 
 const CORS = {

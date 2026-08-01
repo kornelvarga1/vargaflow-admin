@@ -3,16 +3,18 @@
 
 export const OUTREACH_PIPELINE = "outreach";
 
-export type OutreachAngle = "free_website" | "leads_incentive";
+export type OutreachAngle = "free_website" | "leads_incentive" | "free_trial_incentive";
 
 export const OUTREACH_SEQUENCE_BY_ANGLE: Record<OutreachAngle, string> = {
   free_website: "Outreach — Free Website Incentive",
   leads_incentive: "Outreach — Leads Incentive",
+  free_trial_incentive: "Outreach — Free Trial Incentive",
 };
 
 export const OUTREACH_ANGLE_LABEL: Record<OutreachAngle, string> = {
   free_website: "Free Website",
   leads_incentive: "Leads Incentive",
+  free_trial_incentive: "Free Trial",
 };
 
 export const NEGATIVE_KEYWORDS = [

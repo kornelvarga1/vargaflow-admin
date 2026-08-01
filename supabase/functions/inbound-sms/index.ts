@@ -18,6 +18,7 @@ const PROTECTED_REPLIED_STAGES = new Set([
 const OUTREACH_ANGLE_LABEL: Record<string, string> = {
   free_website: "Free Website",
   leads_incentive: "Leads Incentive",
+  free_trial_incentive: "Free Trial",
 };
 
 // Inlined from _shared/outreach.ts (edge-function bundler doesn't follow _shared).

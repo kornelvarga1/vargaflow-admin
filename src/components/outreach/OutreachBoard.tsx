@@ -19,17 +19,23 @@ import { ConversationDrawer } from "@/components/inbox/ConversationDrawer";
 const ANGLE_LABEL: Record<string, string> = {
   free_website: "Free Website",
   leads_incentive: "Leads Incentive",
+  free_trial_incentive: "Free Trial",
 };
 const ANGLE_DOT: Record<string, string> = {
   free_website: "bg-blue-400",
   leads_incentive: "bg-emerald-400",
+  free_trial_incentive: "bg-amber-400",
 };
 
 const ANGLE_FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
   { key: "free_website", label: "Free Website" },
   { key: "leads_incentive", label: "Leads Incentive" },
+  { key: "free_trial_incentive", label: "Free Trial" },
 ];
+
+// Angles that get a warm follow-up sequence when a contact replies positively.
+const WARM_ELIGIBLE_ANGLES = new Set(["leads_incentive", "free_trial_incentive"]);
 
 interface LastInbound {
   contact_id: string;
@@ -109,15 +115,16 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       }),
   }));
 
-  // When a leads_incentive contact is moved to "Interested – Positive Reply",
-  // enroll them in the warm follow-up sequence (video + W1-W6). Fire-and-forget:
+  // When a warm-eligible contact is moved to "Interested – Positive Reply",
+  // enroll them in that angle's warm follow-up sequence. Fire-and-forget:
   // the stage change is already committed; a failed enrollment shows a toast but
   // does not roll back the stage.
   const maybeEnrollWarm = async (contact: Contact, newStage: string) => {
     if (newStage !== "Interested – Positive Reply") return;
-    if (contact.outreach_angle !== "leads_incentive") return;
+    if (!contact.outreach_angle || !WARM_ELIGIBLE_ANGLES.has(contact.outreach_angle)) return;
     const { error } = await invokeFunction("flow-outreach-warm-enroll", {
       contact_id: contact.id,
+      angle: contact.outreach_angle,
     });
     if (error) {
       console.error("[OutreachBoard] warm enroll failed:", error);

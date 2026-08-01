@@ -47,6 +47,10 @@ const ALL_STAGES = [
   ...ONBOARDING_STAGES.map((s) => ({ ...s, pipeline: "Onboarding" as const })),
 ];
 
+// Angles that get a warm follow-up sequence when a contact replies positively.
+// Keep in sync with components/outreach/OutreachBoard.tsx.
+const WARM_ELIGIBLE_ANGLES = new Set(["leads_incentive", "free_trial_incentive"]);
+
 function getStageLabel(key: string, pipeline?: string) {
   const match = ALL_STAGES.find((s) => s.key === key && (!pipeline || s.pipeline === pipeline));
   return match?.label || key;
@@ -278,8 +282,8 @@ export function ContactProfileBody({ id, showBackButton = true }: { id: string; 
 
   const maybeEnrollWarm = async (c: Contact, newStage: string) => {
     if (newStage !== "Interested – Positive Reply") return;
-    if (c.outreach_angle !== "leads_incentive") return;
-    const { error } = await invokeFunction("flow-outreach-warm-enroll", { contact_id: c.id });
+    if (!c.outreach_angle || !WARM_ELIGIBLE_ANGLES.has(c.outreach_angle)) return;
+    const { error } = await invokeFunction("flow-outreach-warm-enroll", { contact_id: c.id, angle: c.outreach_angle });
     if (error) toast.error("Warm sequence enroll failed", { description: String(error) });
   };
 

@@ -27,7 +27,7 @@ async function generateAccessToken(
     iss: apiKeySid,
     sub: accountSid,
     nbf: now,
-    exp: now + 3600,
+    exp: now + 86400,
     grants: {
       identity,
       voice: {

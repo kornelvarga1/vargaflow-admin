@@ -54,6 +54,7 @@ export const LEAD_SOURCES = [
   "Cold Outreach",
   "Outreach — Free Website",
   "Outreach — Leads",
+  "Outreach — Free Trial",
   "Website",
   "Other",
 ] as const;

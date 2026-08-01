@@ -18,7 +18,7 @@ export const OUTREACH_WORKFLOWS: { value: OutreachWorkflow; label: string; descr
   {
     value: "free_trial_incentive",
     label: "Free Trial Incentive",
-    description: "Placeholder copy — messages not written yet.",
+    description: "Lead with a free first month, no strings.",
   },
 ];
 

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSettings, getSequenceSteps, queueSteps } from "../_shared/utils.ts";
+import { ADMIN_BUSINESS_ID, findOrCreateContact, getSettings, getSequenceSteps, queueSteps } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,35 +18,38 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 1. Insert contact
-    const { data: contact, error: dbError } = await supabase
-      .from("contacts")
-      .insert({
+    // contactBid is what gets written to contacts.business_id. Guard against
+    // your own admin account ever ending up here too — same convention as
+    // flow-call-booked/inbound-sms (see ADMIN_BUSINESS_ID in _shared/utils.ts).
+    const contactBid = business_id === ADMIN_BUSINESS_ID ? null : business_id ?? null;
+
+    // 1. Find or create contact — match by email/phone first (scoped to
+    //    contactBid, with a business_id=NULL fallback) so resubmitting the
+    //    form, or submitting from a number already known via another flow,
+    //    doesn't create a second row for the same person.
+    const { contact } = await findOrCreateContact(supabase, {
+      phone,
+      email,
+      contactBusinessId: contactBid,
+      onCreate: {
         full_name: name,
-        phone,
-        email,
-        business_id,
         lead_source: source ?? "lead_form",
         pipeline: "Sales",
         stage: "Lead In",
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (dbError) throw new Error(`DB error: ${dbError.message}`);
+      },
+    });
 
     // 2. Fetch settings + steps
     const settings = await getSettings(supabase, business_id);
     const steps = await getSequenceSteps(supabase, "Flow #1 — Lead Form Submitted");
 
     // 3. Queue all steps
-    await queueSteps(supabase, contact.id, steps, contact, settings, business_id);
+    await queueSteps(supabase, contact.id, steps, contact, settings, contact.business_id);
 
     // 4. Log
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
-      business_id,
+      business_id: contact.business_id,
       flow: "flow-lead-form-submitted",
       status: "queued",
       ran_at: new Date().toISOString(),

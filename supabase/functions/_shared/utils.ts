@@ -189,6 +189,88 @@ export function normalizePhone(phone: string | null | undefined): string | null 
   return null;
 }
 
+// Your own internal "business" record — used ONLY to look up which Twilio
+// number/settings row to send from when a flow has no real client business_id
+// to work with (e.g. your personal Calendly, or your own Twilio number
+// receiving a first-time text). Never write this onto contacts.business_id
+// or message_queue.business_id — those fields mean "which client's customer
+// is this," and stamping your own admin id on them makes the row disappear
+// from every contacts view (they all filter business_id IS NULL for "mine").
+// Keep in sync with cron-message-sender's ADMIN_BUSINESS_ID.
+export const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
+
+// Find an existing contact or create a new one, without ever producing a
+// second row for the same phone number.
+//   - contactBusinessId is the value that will be READ from and WRITTEN to
+//     contacts.business_id. Pass null for your own leads (see ADMIN_BUSINESS_ID
+//     above) — never pass a routing-only business id here.
+//   - Matches by email first (global — a real email address identifies a
+//     person regardless of which business_id they're currently filed under),
+//     then by phone scoped to contactBusinessId.
+//   - Safety net: if contactBusinessId is a real (non-null) business and
+//     nothing matched, also checks phone under business_id IS NULL, so a
+//     contact that hasn't been assigned a business yet doesn't get duplicated
+//     the first time it's matched against a specific one.
+export async function findOrCreateContact(
+  supabase: SupabaseClient,
+  opts: {
+    phone: string | null | undefined;
+    email?: string | null;
+    contactBusinessId: string | null;
+    onCreate: Record<string, any>;
+  },
+): Promise<{ contact: Record<string, any>; created: boolean }> {
+  const phone = normalizePhone(opts.phone);
+
+  if (opts.email) {
+    const { data } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("email", opts.email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (data) return { contact: data, created: false };
+  }
+
+  if (phone) {
+    let primaryQuery = supabase.from("contacts").select("*").eq("phone", phone);
+    primaryQuery = opts.contactBusinessId === null
+      ? primaryQuery.is("business_id", null)
+      : primaryQuery.eq("business_id", opts.contactBusinessId);
+    const { data: primary } = await primaryQuery
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (primary) return { contact: primary, created: false };
+
+    if (opts.contactBusinessId !== null) {
+      const { data: fallback } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("phone", phone)
+        .is("business_id", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fallback) return { contact: fallback, created: false };
+    }
+  }
+
+  const { data: created, error } = await supabase
+    .from("contacts")
+    .insert({
+      ...opts.onCreate,
+      phone,
+      email: opts.email ?? opts.onCreate.email ?? null,
+      business_id: opts.contactBusinessId,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(`Contact create error: ${error.message}`);
+  return { contact: created, created: true };
+}
+
 export async function getSettings(supabase: SupabaseClient, businessId: string) {
   const { data, error } = await supabase
     .from("settings")

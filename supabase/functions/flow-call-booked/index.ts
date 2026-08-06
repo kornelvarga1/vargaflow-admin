@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getTwilioFromNumber, normalizePhone, notifyAdmin, validateWebhookToken } from "../_shared/utils.ts";
+import { ADMIN_BUSINESS_ID, findOrCreateContact, getTwilioFromNumber, normalizePhone, notifyAdmin, validateWebhookToken } from "../_shared/utils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +27,15 @@ serve(async (req) => {
     const event = body.payload ?? body;
     console.log("[2.5] full raw payload:", JSON.stringify(event));
 
-    const businessId = body.business_id ?? event.business_id ?? Deno.env.get("VARGA_FLOW_ADMIN_BID");
+    const routingBid = body.business_id ?? event.business_id ?? Deno.env.get("VARGA_FLOW_ADMIN_BID");
+    // contactBid is what actually gets written to contacts.business_id /
+    // message_queue.business_id. When routingBid fell back to your own admin
+    // business (no explicit business_id on the webhook — true for your
+    // personal Calendly), the contact stays business_id=null like the rest
+    // of your own leads, instead of vanishing from the Contacts view under
+    // an id that means "belongs to this client." routingBid is still used
+    // below purely to look up which settings/Twilio number to send from.
+    const contactBid = routingBid === ADMIN_BUSINESS_ID ? null : routingBid ?? null;
     const eventId = event.uri ?? event.uuid ?? crypto.randomUUID();
     const invitee = event.invitee ?? {};
     const eventTime = event.scheduled_event?.start_time ?? event.start_time;
@@ -56,7 +64,7 @@ serve(async (req) => {
       console.log("[2.6] questions_and_answers phone search:", phoneEntry ?? "not found");
     }
 
-    console.log("[3] parsed fields — eventId:", eventId, "email:", contactEmail, "phone:", contactPhone, "businessId:", businessId);
+    console.log("[3] parsed fields — eventId:", eventId, "email:", contactEmail, "phone:", contactPhone, "routingBid:", routingBid, "contactBid:", contactBid);
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -74,65 +82,42 @@ serve(async (req) => {
     console.log("[4] dedup passed");
 
     // Find or create contact — match by email first, then by normalized phone
-    // so duplicates don't slip in when the Calendly webhook fires for a contact
-    // we already track. Normalization keeps everything E.164-consistent with
-    // the (business_id, phone) unique constraint.
+    // scoped to contactBid (falling back to a business_id=NULL match too), so
+    // duplicates don't slip in when the Calendly webhook fires for a contact
+    // we already track under a different business_id tagging. Normalization
+    // keeps everything E.164-consistent with the (business_id, phone) unique
+    // constraint.
     const normalizedPhone = normalizePhone(contactPhone);
-    let contact;
+    const { contact, created } = await findOrCreateContact(supabase, {
+      phone: contactPhone,
+      email: contactEmail,
+      contactBusinessId: contactBid,
+      onCreate: {
+        full_name: contactName,
+        pipeline: "Sales",
+        stage: "Zoom Call Booked",
+        timezone: invitee.timezone ?? null,
+      },
+    });
 
-    const { data: byEmail } = contactEmail ? await supabase
-      .from("contacts")
-      .select("*")
-      .eq("email", contactEmail)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle() : { data: null };
-
-    const { data: byPhone } = !byEmail && normalizedPhone ? await supabase
-      .from("contacts")
-      .select("*")
-      .eq("phone", normalizedPhone)
-      .eq("business_id", businessId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle() : { data: null };
-
-    contact = byEmail ?? byPhone;
-
-    if (contact) {
-      console.log("[5] existing contact found:", contact.id, "phone:", contact.phone);
+    if (!created) {
+      console.log("[5] existing contact found:", contact.id, "phone:", contact.phone, "business_id:", contact.business_id);
       // Backfill timezone if Calendly provided one and we don't have it yet.
       if (invitee.timezone && !contact.timezone) {
         await supabase.from("contacts").update({ timezone: invitee.timezone }).eq("id", contact.id);
       }
     } else {
-      const { data: newContact, error: insertError } = await supabase
-        .from("contacts")
-        .insert({
-          full_name: contactName,
-          email: contactEmail,
-          phone: normalizedPhone,
-          business_id: businessId,
-          pipeline: "Sales",
-          stage: "Zoom Call Booked",
-          timezone: invitee.timezone ?? null,
-        })
-        .select()
-        .single();
-      if (insertError) throw new Error(`Contact error: ${insertError.message}`);
-      contact = newContact;
-      console.log("[5] new contact created:", contact.id);
+      console.log("[5] new contact created:", contact.id, "business_id:", contact.business_id);
     }
 
-    const bid = businessId ?? contact.business_id;
     const resolvedPhone = normalizedPhone || contact.phone || "";
-    console.log("[6] bid:", bid, "resolvedPhone:", resolvedPhone);
+    console.log("[6] routingBid:", routingBid, "contact.business_id:", contact.business_id, "resolvedPhone:", resolvedPhone);
 
     if (!resolvedPhone) {
       console.log("[6-WARN] no phone number found anywhere — skipping SMS sequences and exiting gracefully");
       await supabase.from("automation_logs").insert({
         contact_id: contact.id,
-        business_id: bid,
+        business_id: contact.business_id,
         flow: "flow-call-booked",
         status: "skipped-no-phone",
         ran_at: new Date().toISOString(),
@@ -160,18 +145,18 @@ serve(async (req) => {
       .update({ stage: "Zoom Call Booked" })
       .eq("id", contact.id);
 
-    // Load settings from settings table
-    console.log("[7] fetching settings, bid:", bid);
+    // Load settings from settings table — always via routingBid (the real
+    // Twilio/settings-owning business), never contact.business_id, which may
+    // now be null for your own leads and wouldn't resolve a settings row.
+    const settingsBid = routingBid ?? contact.business_id;
+    console.log("[7] fetching settings, settingsBid:", settingsBid);
     const { data: settings, error: settingsError } = await supabase
       .from("settings")
       .select("*")
-      .eq("business_id", bid)
+      .eq("business_id", settingsBid)
       .single();
     if (settingsError) throw new Error(`Settings error: ${settingsError.message}`);
     console.log("[8] settings loaded, my_name:", settings.my_name, "my_phone:", settings.my_phone);
-
-    // If bid was missing, resolve it from settings so downstream inserts have it
-    const resolvedBid = bid ?? settings.business_id;
 
     const myName = settings.my_name || "Kornel";
     const companyName = settings.company_name || "Local Scaling";
@@ -181,7 +166,7 @@ serve(async (req) => {
 
     const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
     const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
-    const twilioFrom = await getTwilioFromNumber(supabase, businessId);
+    const twilioFrom = await getTwilioFromNumber(supabase, settingsBid);
     const resendKey = Deno.env.get("RESEND_API_KEY")!;
     console.log("[9] twilio from:", twilioFrom, "twilioSid set:", !!twilioSid, "resendKey set:", !!resendKey);
 
@@ -236,7 +221,7 @@ serve(async (req) => {
       if (scheduledAt.getTime() <= now) return;
       await supabase.from("message_queue").insert({
         contact_id: contact.id,
-        business_id: resolvedBid,
+        business_id: contact.business_id,
         message_type: "telegram",
         message_content: text,
         scheduled_at: scheduledAt.toISOString(),
@@ -249,7 +234,7 @@ serve(async (req) => {
       if (scheduledAt.getTime() <= now) { console.log("[QUEUE] skipped past-time SMS for:", to, "at:", scheduledAt.toISOString()); return; }
       const { error: qErr } = await supabase.from("message_queue").insert({
         contact_id: contact.id,
-        business_id: resolvedBid,
+        business_id: contact.business_id,
         message_type: "sms",
         message_content: body,
         scheduled_at: scheduledAt.toISOString(),
@@ -269,7 +254,7 @@ serve(async (req) => {
       console.log("[QUEUE EMAIL] inserting — to:", to, "subject:", subject, "scheduled_at:", scheduledAt.toISOString());
       const { error: qErr } = await supabase.from("message_queue").insert({
         contact_id: contact.id,
-        business_id: resolvedBid,
+        business_id: contact.business_id,
         message_type: "email",
         message_content: html,
         scheduled_at: scheduledAt.toISOString(),
@@ -455,7 +440,7 @@ serve(async (req) => {
     console.log("[14] all done, logging to automation_logs");
     await supabase.from("automation_logs").insert({
       contact_id: contact.id,
-      business_id: resolvedBid,
+      business_id: contact.business_id,
       flow: "flow-call-booked",
       status: "completed",
       ran_at: new Date().toISOString(),

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { normalizePhone, notifyAdmin, validateTwilioSignature } from "../_shared/utils.ts";
+import { ADMIN_BUSINESS_ID, findOrCreateContact, normalizePhone, notifyAdmin, validateTwilioSignature } from "../_shared/utils.ts";
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
@@ -118,62 +118,32 @@ serve(async (req) => {
     }
 
     const businessId = settings.business_id;
+    // contactBid is what actually gets written to contacts.business_id. Your
+    // own Twilio number resolves businessId to your internal admin account
+    // (ADMIN_BUSINESS_ID) via the settings row — that's only a routing id,
+    // never a real customer-owning business, so contacts stay
+    // business_id=null like the rest of your own leads instead of vanishing
+    // from the Contacts view (which filters business_id IS NULL for "mine").
+    const contactBid = businessId === ADMIN_BUSINESS_ID ? null : businessId;
 
-    // 2. Find or create contact by phone.
-    //    Routing is driven by the receiving Twilio number's business — try a
-    //    contact in that business first, then fall back to a business_id=null
-    //    legacy/CRM contact only if no business-scoped match exists.
-    let contactId: string;
-    let contactBusinessId: string | null = null;
+    // 2. Find or create contact by phone. findOrCreateContact scopes the
+    //    match to contactBid first, falling back to a business_id=null
+    //    legacy/CRM contact when nothing business-scoped exists yet — so the
+    //    same phone number never ends up in two rows no matter which form,
+    //    webhook, or flow it comes through.
+    const { contact: existing, created: createdContact } = await findOrCreateContact(supabase, {
+      phone: from,
+      contactBusinessId: contactBid,
+      onCreate: {
+        full_name: from, // placeholder — can be updated later
+        pipeline: "Sales",
+        stage: "Lead In",
+      },
+    });
 
-    // Pick the most recently created match deterministically — unique-phone
-    // constraint is still TODO, so duplicates exist in the wild.
-    const { data: byBiz } = await supabase
-      .from("contacts")
-      .select("id, full_name, pipeline, outreach_angle, stage, business_id")
-      .eq("phone", from)
-      .eq("business_id", businessId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const { data: byNullBiz } = !byBiz ? await supabase
-      .from("contacts")
-      .select("id, full_name, pipeline, outreach_angle, stage, business_id")
-      .eq("phone", from)
-      .is("business_id", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle() : { data: null };
-
-    const existing = byBiz ?? byNullBiz;
-
-    if (existing) {
-      contactId = existing.id;
-      contactBusinessId = existing.business_id ?? null;
-      console.log("[inbound-sms] existing contact:", contactId, "business_id:", contactBusinessId);
-    } else {
-      const { data: created, error: createErr } = await supabase
-        .from("contacts")
-        .insert({
-          phone: from,  // already normalized at the top of the handler
-          business_id: businessId,
-          full_name: from,      // placeholder — can be updated later
-          pipeline: "Sales",
-          stage: "Lead In",
-        })
-        .select("id")
-        .single();
-
-      if (createErr || !created) {
-        console.error("[inbound-sms] failed to create contact:", createErr?.message);
-        return twiml();
-      }
-
-      contactId = created.id;
-      contactBusinessId = businessId;
-      console.log("[inbound-sms] new contact created:", contactId);
-    }
+    const contactId: string = existing.id;
+    const contactBusinessId: string | null = existing.business_id ?? null;
+    console.log(`[inbound-sms] ${createdContact ? "new" : "existing"} contact:`, contactId, "business_id:", contactBusinessId);
 
     const now = new Date().toISOString();
 

@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
+import { useState, useMemo, useCallback, memo } from "react";
+import { DragDropContext, Droppable, Draggable, type DraggableProvided, type DraggableStateSnapshot, type DropResult } from "@hello-pangea/dnd";
 import { useUpdateContact, type Contact, OUTREACH_STAGES } from "@/hooks/useContacts";
 import { logActivity } from "@/hooks/useActivityLog";
 import { invokeFunction } from "@/lib/invokeFunction";
@@ -69,6 +69,120 @@ interface Props {
   isLoading: boolean;
 }
 
+interface OutreachCardProps {
+  contact: Contact;
+  isSelected: boolean;
+  angle: string;
+  inbound: LastInbound | undefined;
+  provided: DraggableProvided;
+  snapshot: DraggableStateSnapshot;
+  onToggle: (id: string) => void;
+  onOpenDrawer: (contact: Contact) => void;
+  onMoveTo: (contact: Contact, stage: string) => void;
+  onDNC: (contact: Contact) => void;
+}
+
+// Selecting/toggling one card used to re-render every card on the board (up to
+// ~4000+ across all columns at once, each with a Draggable + Radix dropdown +
+// checkbox) since `selected` lives in one Set at the board level. Memoized so
+// only cards whose own props actually changed re-render — the difference
+// between one checkbox click being instant vs. freezing the tab for 1000+
+// contacts (and, per Kornél, breaking "Select all" past ~1150).
+const OutreachCard = memo(function OutreachCard({
+  contact,
+  isSelected,
+  angle,
+  inbound,
+  provided,
+  snapshot,
+  onToggle,
+  onOpenDrawer,
+  onMoveTo,
+  onDNC,
+}: OutreachCardProps) {
+  return (
+    <div
+      ref={provided.innerRef}
+      {...provided.draggableProps}
+      className={`group ${snapshot.isDragging ? "z-50" : ""}`}
+    >
+      <div
+        className={`bg-card border rounded-xl cursor-pointer transition-all ${
+          isSelected ? "border-primary/60 bg-secondary/40" : "border-border/60 hover:bg-secondary/30"
+        } ${snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : ""}`}
+        onClick={() => onOpenDrawer(contact)}
+      >
+        <div className="p-3 flex items-start gap-2">
+          <div
+            onClick={(e) => { e.stopPropagation(); onToggle(contact.id); }}
+            className="mt-0.5 shrink-0"
+          >
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggle(contact.id)}
+              aria-label={`Select ${contact.full_name}`}
+            />
+          </div>
+          <div
+            {...provided.dragHandleProps}
+            className="hidden md:block mt-0.5 opacity-0 group-hover:opacity-50 transition-opacity cursor-grab"
+          >
+            <GripVertical className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.5} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[15px] font-medium text-foreground truncate">{contact.full_name}</p>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={() => onMoveTo(contact, "Interested – Positive Reply")}>
+                    <ThumbsUp className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Interested
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onMoveTo(contact, "Follow-up 1")}>
+                    <MessageSquareOff className="w-4 h-4 mr-2" strokeWidth={1.5} /> Move to Follow-up 1
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onMoveTo(contact, "Appt Set")}>
+                    <CalendarCheck className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Appt Set
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive" onClick={() => onDNC(contact)}>
+                    <Ban className="w-4 h-4 mr-2" strokeWidth={1.5} /> DNC
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            {contact.phone && (
+              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{contact.phone}</p>
+            )}
+            {angle && (
+              <div className="inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-full border border-border/60">
+                <span className={`w-1.5 h-1.5 rounded-full ${ANGLE_DOT[angle] ?? "bg-muted-foreground"}`} />
+                <span className="text-[10px] text-muted-foreground">{ANGLE_LABEL[angle] ?? angle}</span>
+              </div>
+            )}
+            {inbound && (
+              <div className="mt-1.5 text-[11px] text-muted-foreground">
+                <p className="line-clamp-2 leading-snug">"{inbound.message_content}"</p>
+                <p className="text-[10px] mt-0.5 opacity-70">
+                  {formatDistanceToNow(new Date(inbound.created_at), { addSuffix: true })}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function OutreachBoard({ contacts, isLoading }: Props) {
   const updateContact = useUpdateContact();
   const addToDNC = useAddToDNC();
@@ -79,14 +193,18 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerContact, setDrawerContact] = useState<{ id: string; name: string; phone: string | null } | null>(null);
 
-  const toggleOne = (id: string) =>
+  const toggleOne = useCallback((id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
-    });
+    }), []);
   const clearSelection = () => setSelected(new Set());
+  const openDrawer = useCallback((contact: Contact) => {
+    setDrawerContact({ id: contact.id, name: contact.full_name, phone: contact.phone ?? null });
+    setDrawerOpen(true);
+  }, []);
 
   const filtered = useMemo(() => {
     const s = search.toLowerCase();
@@ -119,7 +237,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
   // enroll them in that angle's warm follow-up sequence. Fire-and-forget:
   // the stage change is already committed; a failed enrollment shows a toast but
   // does not roll back the stage.
-  const maybeEnrollWarm = async (contact: Contact, newStage: string) => {
+  const maybeEnrollWarm = useCallback(async (contact: Contact, newStage: string) => {
     if (newStage !== "Interested – Positive Reply") return;
     if (!contact.outreach_angle || !WARM_ELIGIBLE_ANGLES.has(contact.outreach_angle)) return;
     const { error } = await invokeFunction("flow-outreach-warm-enroll", {
@@ -130,7 +248,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
       console.error("[OutreachBoard] warm enroll failed:", error);
       toast.error("Warm sequence enroll failed", { description: String(error) });
     }
-  };
+  }, []);
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
@@ -153,7 +271,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
     }
   };
 
-  const moveTo = async (contact: Contact, stage: string) => {
+  const moveTo = useCallback(async (contact: Contact, stage: string) => {
     try {
       await updateContact.mutateAsync({
         id: contact.id,
@@ -166,9 +284,9 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
     } catch {
       toast.error("Failed to update stage");
     }
-  };
+  }, [updateContact, maybeEnrollWarm]);
 
-  const handleDNC = async (contact: Contact) => {
+  const handleDNC = useCallback(async (contact: Contact) => {
     if (!contact.phone) {
       toast.error("Contact has no phone number");
       return;
@@ -188,7 +306,7 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
         description: err instanceof Error ? err.message : String(err),
       });
     }
-  };
+  }, [addToDNC]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -294,85 +412,18 @@ export default function OutreachBoard({ contacts, isLoading }: Props) {
                         return (
                           <Draggable key={contact.id} draggableId={contact.id} index={idx}>
                             {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                className={`group ${snapshot.isDragging ? "z-50" : ""}`}
-                              >
-                                <div
-                                  className={`bg-card border rounded-xl cursor-pointer transition-all ${
-                                    isSelected ? "border-primary/60 bg-secondary/40" : "border-border/60 hover:bg-secondary/30"
-                                  } ${snapshot.isDragging ? "opacity-90 scale-[1.02] shadow-float" : ""}`}
-                                  onClick={() => { setDrawerContact({ id: contact.id, name: contact.full_name, phone: contact.phone ?? null }); setDrawerOpen(true); }}
-                                >
-                                  <div className="p-3 flex items-start gap-2">
-                                    <div
-                                      onClick={(e) => { e.stopPropagation(); toggleOne(contact.id); }}
-                                      className="mt-0.5 shrink-0"
-                                    >
-                                      <Checkbox
-                                        checked={isSelected}
-                                        onCheckedChange={() => toggleOne(contact.id)}
-                                        aria-label={`Select ${contact.full_name}`}
-                                      />
-                                    </div>
-                                    <div
-                                      {...provided.dragHandleProps}
-                                      className="hidden md:block mt-0.5 opacity-0 group-hover:opacity-50 transition-opacity cursor-grab"
-                                    >
-                                      <GripVertical className="w-3.5 h-3.5 text-muted-foreground" strokeWidth={1.5} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <p className="text-[15px] font-medium text-foreground truncate">{contact.full_name}</p>
-                                        <DropdownMenu>
-                                          <DropdownMenuTrigger asChild>
-                                            <Button
-                                              variant="ghost"
-                                              size="icon"
-                                              className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                                              onClick={(e) => e.stopPropagation()}
-                                            >
-                                              <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.5} />
-                                            </Button>
-                                          </DropdownMenuTrigger>
-                                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                                            <DropdownMenuItem onClick={() => moveTo(contact, "Interested – Positive Reply")}>
-                                              <ThumbsUp className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Interested
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => moveTo(contact, "Follow-up 1")}>
-                                              <MessageSquareOff className="w-4 h-4 mr-2" strokeWidth={1.5} /> Move to Follow-up 1
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => moveTo(contact, "Appt Set")}>
-                                              <CalendarCheck className="w-4 h-4 mr-2" strokeWidth={1.5} /> Mark Appt Set
-                                            </DropdownMenuItem>
-                                            <DropdownMenuItem className="text-destructive" onClick={() => handleDNC(contact)}>
-                                              <Ban className="w-4 h-4 mr-2" strokeWidth={1.5} /> DNC
-                                            </DropdownMenuItem>
-                                          </DropdownMenuContent>
-                                        </DropdownMenu>
-                                      </div>
-                                      {contact.phone && (
-                                        <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{contact.phone}</p>
-                                      )}
-                                      {angle && (
-                                        <div className="inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-full border border-border/60">
-                                          <span className={`w-1.5 h-1.5 rounded-full ${ANGLE_DOT[angle] ?? "bg-muted-foreground"}`} />
-                                          <span className="text-[10px] text-muted-foreground">{ANGLE_LABEL[angle] ?? angle}</span>
-                                        </div>
-                                      )}
-                                      {inbound && (
-                                        <div className="mt-1.5 text-[11px] text-muted-foreground">
-                                          <p className="line-clamp-2 leading-snug">"{inbound.message_content}"</p>
-                                          <p className="text-[10px] mt-0.5 opacity-70">
-                                            {formatDistanceToNow(new Date(inbound.created_at), { addSuffix: true })}
-                                          </p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
+                              <OutreachCard
+                                contact={contact}
+                                isSelected={isSelected}
+                                angle={angle}
+                                inbound={inbound}
+                                provided={provided}
+                                snapshot={snapshot}
+                                onToggle={toggleOne}
+                                onOpenDrawer={openDrawer}
+                                onMoveTo={moveTo}
+                                onDNC={handleDNC}
+                              />
                             )}
                           </Draggable>
                         );

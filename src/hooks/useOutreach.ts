@@ -29,18 +29,32 @@ export interface EnrollResult {
 
 const ENROLL_BATCH_SIZE = 50;
 
+export interface EnrollBatchResult extends EnrollResult {
+  failedBatches: number;
+}
+
 export function useEnrollOutreach() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: { contact_ids: string[]; workflow: OutreachWorkflow }) => {
-      const result: EnrollResult = { enrolled: [], skipped: [] };
+      const result: EnrollBatchResult = { enrolled: [], skipped: [], failedBatches: 0 };
+      // One bad/slow batch used to throw and abandon every remaining batch,
+      // silently losing progress on large lists (~1750+ contacts). Continue
+      // through failures instead — a contact that didn't get processed just
+      // stays in Cold List (outreach_angle still null), so re-running the
+      // enroll later picks up exactly what's left, nothing is lost either way.
       for (let i = 0; i < input.contact_ids.length; i += ENROLL_BATCH_SIZE) {
         const batch = input.contact_ids.slice(i, i + ENROLL_BATCH_SIZE);
-        const { data, error } = await invokeFunction<EnrollResult>("enroll-outreach", { contact_ids: batch, workflow: input.workflow });
-        if (error) throw error;
-        if (!data) throw new Error("empty response from enroll-outreach");
-        result.enrolled.push(...data.enrolled);
-        result.skipped.push(...data.skipped);
+        try {
+          const { data, error } = await invokeFunction<EnrollResult>("enroll-outreach", { contact_ids: batch, workflow: input.workflow });
+          if (error) throw error;
+          if (!data) throw new Error("empty response from enroll-outreach");
+          result.enrolled.push(...data.enrolled);
+          result.skipped.push(...data.skipped);
+        } catch (err) {
+          console.error(`[useEnrollOutreach] batch ${i}-${i + batch.length} failed:`, err);
+          result.failedBatches += 1;
+        }
       }
       return result;
     },

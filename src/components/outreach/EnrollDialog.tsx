@@ -27,18 +27,21 @@ export default function EnrollDialog({ open, onOpenChange, contactIds, onEnrolle
       const result = await enroll.mutateAsync({ contact_ids: contactIds, workflow });
       const enrolledN = result.enrolled.length;
       const skippedN = result.skipped.length;
+      const failedBatchNote = result.failedBatches > 0
+        ? ` (${result.failedBatches} batch${result.failedBatches === 1 ? "" : "es"} failed — remaining contacts stayed in Cold List, re-run enroll to pick them up)`
+        : "";
 
       if (enrolledN > 0) {
         toast.success(
           skippedN > 0
-            ? `Enrolled ${enrolledN}, skipped ${skippedN}`
-            : `Enrolled ${enrolledN} contact${enrolledN === 1 ? "" : "s"}`,
+            ? `Enrolled ${enrolledN}, skipped ${skippedN}${failedBatchNote}`
+            : `Enrolled ${enrolledN} contact${enrolledN === 1 ? "" : "s"}${failedBatchNote}`,
           {
             description: skippedN > 0 ? skipReasons(result.skipped) : undefined,
           },
         );
       } else {
-        toast.error(`Nothing enrolled — ${skippedN} skipped`, {
+        toast.error(`Nothing enrolled — ${skippedN} skipped${failedBatchNote}`, {
           description: skipReasons(result.skipped),
         });
       }

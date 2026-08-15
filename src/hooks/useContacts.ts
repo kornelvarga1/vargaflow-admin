@@ -67,7 +67,14 @@ export function useContacts(pipeline?: string) {
       let from = 0;
       let all: Contact[] = [];
       while (true) {
-        let query = supabase.from("contacts").select("*").is("business_id", null).order("created_at", { ascending: false }).range(from, from + pageSize - 1);
+        // Secondary sort on `id` is required, not cosmetic: bulk CSV imports insert
+        // hundreds of rows in one statement, and Postgres gives every row in that
+        // statement the same created_at (`now()` is evaluated once per statement).
+        // Ordering by created_at alone is unstable across ties, so rows can shuffle
+        // between page boundaries on range()-based pagination and get silently
+        // skipped — manifested as "Select all" undercounting a large column by
+        // however many contacts landed on the wrong side of a page boundary.
+        let query = supabase.from("contacts").select("*").is("business_id", null).order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, from + pageSize - 1);
         if (pipeline) query = query.eq("pipeline", pipeline);
         const { data, error } = await query;
         if (error) throw error;

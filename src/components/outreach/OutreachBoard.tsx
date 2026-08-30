@@ -20,11 +20,13 @@ const ANGLE_LABEL: Record<string, string> = {
   free_website: "Free Website",
   leads_incentive: "Leads Incentive",
   free_trial_incentive: "Free Trial",
+  ai_receptionist: "AI Receptionist",
 };
 const ANGLE_DOT: Record<string, string> = {
   free_website: "bg-blue-400",
   leads_incentive: "bg-emerald-400",
   free_trial_incentive: "bg-amber-400",
+  ai_receptionist: "bg-violet-400",
 };
 
 const ANGLE_FILTERS: { key: string; label: string }[] = [
@@ -32,10 +34,11 @@ const ANGLE_FILTERS: { key: string; label: string }[] = [
   { key: "free_website", label: "Free Website" },
   { key: "leads_incentive", label: "Leads Incentive" },
   { key: "free_trial_incentive", label: "Free Trial" },
+  { key: "ai_receptionist", label: "AI Receptionist" },
 ];
 
 // Angles that get a warm follow-up sequence when a contact replies positively.
-const WARM_ELIGIBLE_ANGLES = new Set(["leads_incentive", "free_trial_incentive"]);
+const WARM_ELIGIBLE_ANGLES = new Set(["leads_incentive", "free_trial_incentive", "ai_receptionist"]);
 
 interface LastInbound {
   contact_id: string;

@@ -14,6 +14,7 @@ const SEQUENCE_BY_ANGLE: Record<string, string> = {
   free_website: "Outreach — Free Website Incentive",
   leads_incentive: "Outreach — Leads Incentive",
   free_trial_incentive: "Outreach — Free Trial Incentive",
+  ai_receptionist: "Outreach — AI Receptionist",
 };
 
 const CORS = {

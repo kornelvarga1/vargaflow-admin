@@ -9,6 +9,7 @@ const ADMIN_BUSINESS_ID = "79036fbb-997c-4f7b-b46f-ccc97a64c38d";
 const WARM_SEQUENCE_BY_ANGLE: Record<string, string> = {
   leads_incentive: "Outreach — Leads Incentive (Warm)",
   free_trial_incentive: "Outreach — Free Trial Incentive (Warm)",
+  ai_receptionist: "Outreach — AI Receptionist (Warm)",
 };
 
 const CORS = {

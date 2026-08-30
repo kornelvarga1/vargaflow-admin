@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { invokeFunction } from "@/lib/invokeFunction";
 
-export type OutreachWorkflow = "free_website" | "leads_incentive" | "free_trial_incentive";
+export type OutreachWorkflow = "free_website" | "leads_incentive" | "free_trial_incentive" | "ai_receptionist";
 
 export const OUTREACH_WORKFLOWS: { value: OutreachWorkflow; label: string; description: string }[] = [
   {
@@ -19,6 +19,11 @@ export const OUTREACH_WORKFLOWS: { value: OutreachWorkflow; label: string; descr
     value: "free_trial_incentive",
     label: "Free Trial Incentive",
     description: "Lead with a free first month, no strings.",
+  },
+  {
+    value: "ai_receptionist",
+    label: "AI Receptionist",
+    description: "Point them at the live demo number, let it sell itself.",
   },
 ];
 

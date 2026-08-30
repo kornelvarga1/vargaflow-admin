@@ -49,7 +49,7 @@ const ALL_STAGES = [
 
 // Angles that get a warm follow-up sequence when a contact replies positively.
 // Keep in sync with components/outreach/OutreachBoard.tsx.
-const WARM_ELIGIBLE_ANGLES = new Set(["leads_incentive", "free_trial_incentive"]);
+const WARM_ELIGIBLE_ANGLES = new Set(["leads_incentive", "free_trial_incentive", "ai_receptionist"]);
 
 function getStageLabel(key: string, pipeline?: string) {
   const match = ALL_STAGES.find((s) => s.key === key && (!pipeline || s.pipeline === pipeline));

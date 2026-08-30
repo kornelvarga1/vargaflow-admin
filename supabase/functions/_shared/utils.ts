@@ -465,6 +465,28 @@ export async function notifyAdmin(text: string): Promise<void> {
   }
 }
 
+// Exchanges a stored Google OAuth refresh token for a short-lived access
+// token. Called fresh on every calendar request rather than caching/tracking
+// expiry ourselves — call volume here is low (one voice call at a time per
+// business), so the extra round-trip is cheap and avoids expiry-tracking bugs.
+export async function getGoogleAccessToken(refreshToken: string): Promise<string> {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: Deno.env.get("GOOGLE_OAUTH_CLIENT_ID")!,
+      client_secret: Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET")!,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Google token refresh failed: ${JSON.stringify(data)}`);
+  }
+  return data.access_token;
+}
+
 export async function hasPendingMessages(
   supabase: SupabaseClient,
   contactId: string

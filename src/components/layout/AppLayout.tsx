@@ -14,6 +14,7 @@ import {
   WifiOff,
   ChevronRight,
   TrendingUp,
+  PhoneCall,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useConversationOpen } from "@/context/ConversationContext";
@@ -51,6 +52,7 @@ const allNavItems = [
   { to: "/clients", icon: Building2, label: "Clients", end: false },
   { to: "/onboarding-submissions", icon: FileText, label: "Submissions", end: false },
   { to: "/growth", icon: TrendingUp, label: "Growth", end: false },
+  { to: "/voice-calls", icon: PhoneCall, label: "Voice Calls", end: false },
   { to: "/settings", icon: Settings, label: "Settings", end: false },
 ];
 

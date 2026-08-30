@@ -14,6 +14,7 @@ import ContactProfilePage from "./pages/ContactProfilePage";
 import ClientsPage from "./pages/ClientsPage";
 import OnboardingSubmissionsPage from "./pages/OnboardingSubmissionsPage";
 import GrowthPage from "./pages/GrowthPage";
+import VoiceCallsPage from "./pages/VoiceCallsPage";
 import LoginPage from "./pages/LoginPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
@@ -45,6 +46,7 @@ const App = () => (
                     <Route path="/clients" element={<ClientsPage />} />
                     <Route path="/onboarding-submissions" element={<OnboardingSubmissionsPage />} />
                     <Route path="/growth" element={<GrowthPage />} />
+                    <Route path="/voice-calls" element={<VoiceCallsPage />} />
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </AppLayout>

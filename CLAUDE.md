@@ -66,7 +66,7 @@ Edge functions are written in TypeScript/Deno and deployed via Supabase CLI.
 ## Project Details
 - Supabase Project ID: zfmchywjmgykmlhjihls
 - Deploy command: `supabase functions deploy <function-name> --project-ref zfmchywjmgykmlhjihls`
-- Twilio number: +18889959616 (toll-free, verification pending)
+- Twilio number: +14696944760
 
 ## Database Tables
 - `contacts` — core contact/lead record (full_name, phone, email, pipeline, stage, tags)

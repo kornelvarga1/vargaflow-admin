@@ -1,5 +1,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { normalizePhone } from "../_shared/utils.ts";
+import { normalizePhone, notifyAdmin } from "../_shared/utils.ts";
+
+// Stable per project_ai_receptionist_pivot memory — Retell locks/recreates the
+// LLM+agent pair on prompt edits, but the two demo phone numbers stay fixed.
+const DEMO_NUMBER_LABELS: Record<string, string> = {
+  "+12132385364": "Ryan / Summit Roofing (roofing-estimate demo)",
+  "+16562460255": "Jake / Ironclad Plumbing (emergency demo)",
+};
+
+// Below this, treat the call as a misdial/immediate-hangup, not real engagement.
+const FOLLOWUP_MIN_DURATION_SEC = 15;
+// Delay before the "how was it" text goes out — this is the fast-response
+// mechanism (Kornél mostly can't beat it manually, day job + sleep), so it's
+// short. Just enough of a gap that it doesn't read as a bot watching the call
+// in real time, matching the personal-founder tone the rest of the copy uses.
+const FOLLOWUP_DELAY_MINUTES = 3;
 
 // Retell agent-level webhook (call_started / call_ended / call_analyzed) —
 // configured once per demo agent via `retell agent update <agent_id>
@@ -146,6 +161,71 @@ Deno.serve(async (req) => {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+  }
+
+  // Fire the Telegram ping on call_ended specifically — earliest event where
+  // duration and from_number are both known, so the notification lands as
+  // soon as possible rather than waiting on call_analyzed.
+  if (body.event === "call_ended") {
+    const durationSec = row.duration_ms != null ? Math.round(row.duration_ms / 1000) : null;
+    const durationLabel = durationSec != null
+      ? `${Math.floor(durationSec / 60)}:${String(durationSec % 60).padStart(2, "0")}`
+      : "unknown";
+    const demoLabel = (row.to_number && DEMO_NUMBER_LABELS[row.to_number]) ?? row.to_number ?? "unknown demo number";
+
+    let contactLabel = row.from_number ?? "unknown number";
+    if (row.matched_contact_id) {
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("full_name")
+        .eq("id", row.matched_contact_id)
+        .maybeSingle();
+      contactLabel += contact?.full_name ? ` (${contact.full_name})` : "";
+    } else {
+      contactLabel += " (no match in outreach list)";
+    }
+
+    await notifyAdmin(
+      `📞 New demo call — ${demoLabel}\nFrom: ${contactLabel}\nDuration: ${durationLabel}` +
+      (row.disconnection_reason ? `\nEnded: ${row.disconnection_reason}` : ""),
+    );
+
+    // Auto follow-up SMS for silent callers — someone who called the demo and
+    // never texted back has no reason to re-engage on their own. Only for
+    // real engagement (duration threshold), only for known outreach contacts
+    // (need a number we're allowed to text), only if they haven't already
+    // engaged by SMS (don't step on an active conversation/warm sequence),
+    // and only once per contact (in case they call again).
+    if (
+      row.matched_contact_id &&
+      durationSec != null &&
+      durationSec >= FOLLOWUP_MIN_DURATION_SEC
+    ) {
+      const { data: alreadyEngaged } = await supabase
+        .from("message_queue")
+        .select("id")
+        .eq("contact_id", row.matched_contact_id)
+        .or("direction.eq.inbound,metadata->>source.eq.call_followup")
+        .limit(1)
+        .maybeSingle();
+
+      if (!alreadyEngaged) {
+        const { error: followupError } = await supabase.from("message_queue").insert({
+          contact_id: row.matched_contact_id,
+          business_id: null,
+          to_phone: row.from_number_normalized,
+          message_type: "sms",
+          message_content:
+            "Hey, noticed you called and tried out the AI receptionist demo, curious what you thought, liked it or nah?",
+          status: "pending",
+          scheduled_at: new Date(Date.now() + FOLLOWUP_DELAY_MINUTES * 60 * 1000).toISOString(),
+          metadata: { source: "call_followup", call_id: call.call_id },
+        });
+        if (followupError) {
+          console.error("[voice-call-webhook] follow-up queue insert error:", followupError.message);
+        }
+      }
+    }
   }
 
   return new Response(JSON.stringify({ success: true }), {

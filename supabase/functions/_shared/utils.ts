@@ -500,3 +500,362 @@ export async function hasPendingMessages(
   if (error) console.error(`Check pending messages error: ${error.message}`);
   return (count ?? 0) > 0;
 }
+
+// Everything that happens once a sales call is confirmed for a time slot:
+// dedupe, contact creation, the immediate confirmation SMS/email, the full
+// time-relative reminder cascade, and the returning-booker ("rebooked")
+// branch. Originally lived inline in flow-call-booked (Calendly webhook);
+// extracted so both that legacy adapter and the self-built booking flow
+// (book-call, manage-booking) share one implementation. Callers pass an
+// eventId used only for idempotency — reuse the same id to no-op a repeat
+// call, or pass a fresh one (e.g. on reschedule) to force a new cascade.
+export async function handleCallBooked(
+  supabase: SupabaseClient,
+  params: {
+    eventId: string;
+    contactName: string;
+    contactEmail: string;
+    contactPhone: string;
+    eventTime: string;
+    meetingLink: string;
+    inviteeTz: string;
+    routingBid: string;
+    manageUrl?: string;
+  }
+): Promise<{
+  contact: Record<string, any> | null;
+  created: boolean;
+  duplicate: boolean;
+  noPhone: boolean;
+  branch?: "first-time" | "returning";
+}> {
+  const { eventId, contactName, contactEmail, contactPhone, eventTime, meetingLink, inviteeTz, routingBid, manageUrl } = params;
+  const contactBid = routingBid === ADMIN_BUSINESS_ID ? null : routingBid ?? null;
+
+  const formatTime = (tz: string) =>
+    eventTime ? new Date(eventTime).toLocaleString("en-US", { timeZone: tz }) : "your scheduled time";
+  const appointmentTimeForContact = formatTime(inviteeTz);
+  // Internal SMS/Telegram goes to Kornél in Hungary — Europe/Budapest handles
+  // DST automatically (CET in winter, CEST in summer).
+  const appointmentTimeForMe = formatTime("Europe/Budapest");
+
+  const { error: dupError } = await supabase
+    .from("processed_webhooks")
+    .insert({ event_id: eventId });
+  if (dupError) {
+    console.log("[handleCallBooked] duplicate event, skipping:", dupError.message);
+    return { contact: null, created: false, duplicate: true, noPhone: false };
+  }
+
+  const { contact, created } = await findOrCreateContact(supabase, {
+    phone: contactPhone,
+    email: contactEmail,
+    contactBusinessId: contactBid,
+    onCreate: {
+      full_name: contactName,
+      pipeline: "Sales",
+      stage: "Zoom Call Booked",
+      timezone: inviteeTz ?? null,
+    },
+  });
+
+  if (!created && inviteeTz && !contact.timezone) {
+    await supabase.from("contacts").update({ timezone: inviteeTz }).eq("id", contact.id);
+  }
+
+  const normalizedPhone = normalizePhone(contactPhone);
+  const resolvedPhone = normalizedPhone || contact.phone || "";
+
+  if (!resolvedPhone) {
+    await supabase.from("automation_logs").insert({
+      contact_id: contact.id,
+      business_id: contact.business_id,
+      flow: "flow-call-booked",
+      status: "skipped-no-phone",
+      ran_at: new Date().toISOString(),
+    });
+    return { contact, created, duplicate: false, noPhone: true };
+  }
+
+  if (normalizedPhone && !contact.phone) {
+    await supabase.from("contacts").update({ phone: normalizedPhone }).eq("id", contact.id);
+  }
+
+  await cancelPendingMessages(supabase, contact.id);
+
+  await supabase
+    .from("contacts")
+    .update({ stage: "Zoom Call Booked" })
+    .eq("id", contact.id);
+
+  const settingsBid = routingBid ?? contact.business_id;
+  const settings = await getSettings(supabase, settingsBid);
+
+  const myName = settings.my_name || "Kornel";
+  const companyName = settings.company_name || "Local Scaling";
+  const videoLink = settings.software_explanation_video || "[video link]";
+  const websiteUrl = settings.website_url || "[website]";
+
+  const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+  const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+  const twilioFrom = await getTwilioFromNumber(supabase, settingsBid);
+  const resendKey = Deno.env.get("RESEND_API_KEY")!;
+
+  const sendSMS = async (to: string, body: string) => {
+    if (!to) return;
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ To: to, From: twilioFrom, Body: body }),
+      }
+    );
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(`Twilio error: ${data.message ?? res.statusText}`);
+    }
+  };
+
+  const sendEmail = async (to: string, subject: string, html: string) => {
+    if (!to) return;
+    const res = await sendEmailWithUnsubscribe({
+      resendKey,
+      from: `${companyName} <hello@vargaflow.com>`,
+      to,
+      subject,
+      html,
+      contactId: contact.id,
+      replyTo: settings.my_email || undefined,
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(`Resend error: ${data.message ?? res.statusText}`);
+    }
+  };
+
+  const now = Date.now();
+
+  const queueTelegram = async (text: string, scheduledAt: Date) => {
+    if (scheduledAt.getTime() <= now) return;
+    await supabase.from("message_queue").insert({
+      contact_id: contact.id,
+      business_id: contact.business_id,
+      message_type: "telegram",
+      message_content: text,
+      scheduled_at: scheduledAt.toISOString(),
+      status: "pending",
+      metadata: {},
+    });
+  };
+
+  const queueSMS = async (to: string, body: string, scheduledAt: Date) => {
+    if (scheduledAt.getTime() <= now) return;
+    await supabase.from("message_queue").insert({
+      contact_id: contact.id,
+      business_id: contact.business_id,
+      message_type: "sms",
+      message_content: body,
+      scheduled_at: scheduledAt.toISOString(),
+      status: "pending",
+      metadata: { to },
+    });
+  };
+
+  const queueEmail = async (to: string, subject: string, html: string, scheduledAt: Date) => {
+    if (!to) return;
+    if (scheduledAt.getTime() <= now) return;
+    await supabase.from("message_queue").insert({
+      contact_id: contact.id,
+      business_id: contact.business_id,
+      message_type: "email",
+      message_content: html,
+      scheduled_at: scheduledAt.toISOString(),
+      status: "pending",
+      metadata: { to, subject, ...(settings.my_email ? { reply_to: settings.my_email } : {}) },
+    });
+  };
+
+  const { data: tagsRow } = await supabase
+    .from("contacts")
+    .select("tags")
+    .eq("id", contact.id)
+    .single();
+
+  const tagsArr: string[] = Array.isArray(tagsRow?.tags) ? tagsRow.tags : [];
+  const hasBookedTag = tagsArr.includes("Booked");
+  const meetingDate = eventTime ? new Date(eventTime) : new Date();
+  const manageLine = manageUrl ? ` Need to reschedule or cancel? ${manageUrl}` : "";
+  const manageHtml = manageUrl
+    ? `<p>Need to reschedule or cancel? <a href="${manageUrl}">Manage your booking here</a>.</p>`
+    : "";
+
+  // Step 1: Confirmation SMS immediately
+  await sendSMS(
+    resolvedPhone,
+    `Booked! Your Zoom call with ${myName} is all set for ${appointmentTimeForContact}. — ${myName}${manageLine}`
+  );
+
+  // Step 2: Internal Telegram notification immediately
+  await notifyAdmin(`${contactName} just booked the call. Date: ${appointmentTimeForMe}. Number: ${resolvedPhone}.`);
+
+  if (!hasBookedTag) {
+    const updatedTags = tagsArr.includes("Booked") ? tagsArr : [...tagsArr, "Booked"];
+    await supabase.from("contacts").update({ tags: updatedTags }).eq("id", contact.id);
+
+    await sendEmail(
+      contactEmail,
+      `Your call with ${myName} is booked`,
+      `<p>Hey ${contactName},</p>
+       <p>Your Zoom call with ${myName} is booked for ${appointmentTimeForContact}.</p>
+       <p>Join link: ${meetingLink || "[Zoom link will be sent before call]"}</p>
+       ${manageHtml}
+       <p>If anything's changed, just reply to this email.</p>
+       <p>— ${myName}</p>`
+    );
+
+    await queueSMS(
+      resolvedPhone,
+      `By the way, here's a short video breaking down exactly what I built: ${videoLink}`,
+      new Date(Date.now() + 4 * 60 * 1000)
+    );
+
+    const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `Hey, we have our call tomorrow. A few links if you want to do your homework on me: ${websiteUrl} ${videoLink}`,
+      reminder24h
+    );
+    await queueEmail(
+      contactEmail,
+      `Your Zoom call with ${myName} is in 24 hours`,
+      `<p>Hey ${contactName},</p>
+       <p>Don't forget — your Zoom call with ${myName} is in 24 hours at ${appointmentTimeForContact}.</p>
+       <p>If anything's changed, just reply and we'll sort it out.</p>
+       <p>— ${myName}, ${companyName}</p>`,
+      reminder24h
+    );
+
+    await queueSMS(
+      resolvedPhone,
+      `Looking forward to our call in a few hours ${contactName}. Talk soon, ${myName}`,
+      new Date(meetingDate.getTime() - 2 * 60 * 60 * 1000)
+    );
+
+    const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `See you on Zoom in 1 hour! Your Zoom link: ${meetingLink}`,
+      reminder1h
+    );
+    await queueEmail(
+      contactEmail,
+      `Your Zoom call is in 1 hour`,
+      `<p>Hey ${contactName},</p>
+       <p>Your Zoom call with me is in 1 hour at ${appointmentTimeForContact}.</p>
+       <p><a href="${meetingLink}">Click here to join</a></p>
+       <p>Talk soon — ${myName}</p>`,
+      reminder1h
+    );
+    await queueTelegram(`Sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
+
+    const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `Talk to you in 10 minutes! Joining on laptop is better. Here's the link if on phone: ${meetingLink}`,
+      reminder10m
+    );
+    await queueEmail(
+      contactEmail,
+      `Zoom call in 10 minutes`,
+      `<p>Hey ${contactName}, your Zoom call is in 10 minutes! <a href="${meetingLink}">Click here to join</a></p>`,
+      reminder10m
+    );
+
+    const reminder3m = new Date(meetingDate.getTime() - 3 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `I am on Zoom whenever you're ready. Here's the link if joining on phone: ${meetingLink}`,
+      reminder3m
+    );
+    await queueTelegram(`Sales call with ${contactName} is in 3 minutes. Number: ${resolvedPhone}.`, reminder3m);
+
+  } else {
+    await sendEmail(
+      contactEmail,
+      `Your call with ${myName} is rebooked`,
+      `<p>Hey ${contactName},</p>
+       <p>Got you back on the calendar — Zoom call with ${myName} is set for ${appointmentTimeForContact}.</p>
+       ${manageHtml}
+       <p>If anything's changed, just reply to this email.</p>
+       <p>— ${myName}</p>`
+    );
+
+    await queueSMS(
+      resolvedPhone,
+      `Hey ${contactName}, got you scheduled in again for ${appointmentTimeForContact}. This 100% works for you, right? — ${myName}`,
+      new Date(Date.now() + 60 * 1000)
+    );
+
+    await queueSMS(
+      resolvedPhone,
+      `You might have seen this already but just so you know — I take a lot of pride in my work. Take a look: ${websiteUrl}`,
+      new Date(Date.now() + 15 * 60 * 1000)
+    );
+
+    const reminder24h = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `Hey, see you on Zoom tomorrow. Just wanted to confirm your appointment. Talk soon, ${myName}, ${companyName}`,
+      reminder24h
+    );
+
+    await queueSMS(
+      resolvedPhone,
+      `Here's that video again if you want to watch before our call — just 6 minutes: ${videoLink}`,
+      new Date(meetingDate.getTime() - 2 * 60 * 60 * 1000)
+    );
+
+    const reminder1h = new Date(meetingDate.getTime() - 60 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `See you in an hour! Your Zoom link: ${meetingLink} — ${myName}`,
+      reminder1h
+    );
+    await queueTelegram(`Sales call with ${contactName} is in 1 hour. Number: ${resolvedPhone}.`, reminder1h);
+
+    const reminder10m = new Date(meetingDate.getTime() - 10 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `See you in 10 minutes! Just sent the meeting link to your email so it's at the top of your inbox`,
+      reminder10m
+    );
+    await queueEmail(
+      contactEmail,
+      `Zoom call in 10 minutes`,
+      `<p>Hey ${contactName}, your Zoom call is in 10 minutes! <a href="${meetingLink}">Click here to join</a></p>`,
+      reminder10m
+    );
+
+    const reminder5m = new Date(meetingDate.getTime() - 5 * 60 * 1000);
+    await queueSMS(
+      resolvedPhone,
+      `I am on the call. Let me know if you can't find the link.`,
+      reminder5m
+    );
+    await queueTelegram(`Sales call with ${contactName} is in 5 minutes. Number: ${resolvedPhone}.`, reminder5m);
+  }
+
+  await supabase.from("automation_logs").insert({
+    contact_id: contact.id,
+    business_id: contact.business_id,
+    flow: "flow-call-booked",
+    status: "completed",
+    ran_at: new Date().toISOString(),
+  });
+
+  return { contact, created, duplicate: false, noPhone: false, branch: hasBookedTag ? "returning" : "first-time" };
+}

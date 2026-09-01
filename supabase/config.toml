@@ -180,3 +180,33 @@ entrypoint = "./functions/enroll-outreach/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/unsubscribe/index.ts"
+
+[functions.get-availability]
+enabled = true
+verify_jwt = false
+import_map = "./functions/get-availability/deno.json"
+entrypoint = "./functions/get-availability/index.ts"
+
+[functions.book-call]
+enabled = true
+verify_jwt = false
+import_map = "./functions/book-call/deno.json"
+entrypoint = "./functions/book-call/index.ts"
+
+[functions.manage-booking]
+enabled = true
+verify_jwt = false
+import_map = "./functions/manage-booking/deno.json"
+entrypoint = "./functions/manage-booking/index.ts"
+
+[functions.booking-oauth-start]
+enabled = true
+verify_jwt = false
+import_map = "./functions/booking-oauth-start/deno.json"
+entrypoint = "./functions/booking-oauth-start/index.ts"
+
+[functions.booking-oauth-callback]
+enabled = true
+verify_jwt = false
+import_map = "./functions/booking-oauth-callback/deno.json"
+entrypoint = "./functions/booking-oauth-callback/index.ts"

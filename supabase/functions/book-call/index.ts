@@ -23,7 +23,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const rawBody = await req.json();
+    // Retell's custom-tool calls wrap arguments as { args: {...} } rather than
+    // sending them flat — same quirk voice-book-appointment already guards
+    // against. The website's own BookingWidget posts flat, so body.args is
+    // undefined there and this falls through to rawBody unchanged.
+    const body = (rawBody?.args as Record<string, unknown>) ?? rawBody;
     const full_name = (body.full_name ?? "").toString().trim();
     const email = (body.email ?? "").toString().trim();
     const phone = (body.phone ?? "").toString().trim();

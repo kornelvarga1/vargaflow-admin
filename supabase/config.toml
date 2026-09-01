@@ -210,3 +210,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/booking-oauth-callback/deno.json"
 entrypoint = "./functions/booking-oauth-callback/index.ts"
+
+[functions.demo-send-confirmation]
+enabled = true
+verify_jwt = false
+import_map = "./functions/demo-send-confirmation/deno.json"
+entrypoint = "./functions/demo-send-confirmation/index.ts"

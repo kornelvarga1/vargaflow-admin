@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { validateTwilioSignature } from "../_shared/utils.ts";
+import { ADMIN_BUSINESS_ID, validateTwilioSignature } from "../_shared/utils.ts";
 
 const FUNCTION_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1/inbound-call`;
 const FORWARD_TIMEOUT_SECONDS = 20;
@@ -63,19 +63,24 @@ serve(async (req) => {
       // Log the call event in message_queue so it shows in the inbox thread
       console.log("[inbound-call] callback from:", from, "status:", dialCallStatus, "business:", settings.business_id);
 
-      const { data: contact, error: contactErr } = await supabase
-        .from("contacts")
-        .select("id")
-        .eq("phone", from)
-        .eq("business_id", settings.business_id)
-        .maybeSingle();
+      // Kornél's own leads (settings.business_id === ADMIN_BUSINESS_ID) are
+      // stored with contacts.business_id = NULL, never the admin id itself
+      // — same convention as findOrCreateContact elsewhere. Scoping this
+      // lookup to settings.business_id directly meant calls to his own
+      // number never matched a contact and silently never got logged.
+      const contactBusinessId = settings.business_id === ADMIN_BUSINESS_ID ? null : settings.business_id;
+      let contactQuery = supabase.from("contacts").select("id").eq("phone", from);
+      contactQuery = contactBusinessId === null
+        ? contactQuery.is("business_id", null)
+        : contactQuery.eq("business_id", contactBusinessId);
+      const { data: contact, error: contactErr } = await contactQuery.maybeSingle();
 
       console.log("[inbound-call] contact lookup:", contact?.id ?? "not found", contactErr?.message ?? "");
 
       if (contact?.id) {
         await supabase.from("message_queue").insert({
           contact_id: contact.id,
-          business_id: settings.business_id,
+          business_id: contactBusinessId,
           message_type: "call",
           message_content: answered ? "Call answered" : "Missed call",
           direction: "inbound",

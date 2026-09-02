@@ -20,7 +20,7 @@ serve(async (req) => {
 
     // contactBid is what gets written to contacts.business_id. Guard against
     // your own admin account ever ending up here too — same convention as
-    // flow-call-booked/inbound-sms (see ADMIN_BUSINESS_ID in _shared/utils.ts).
+    // book-call/inbound-sms (see ADMIN_BUSINESS_ID in _shared/utils.ts).
     const contactBid = business_id === ADMIN_BUSINESS_ID ? null : business_id ?? null;
 
     // 1. Find or create contact — match by email/phone first (scoped to

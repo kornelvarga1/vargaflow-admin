@@ -17,17 +17,6 @@ entrypoint = "./functions/flow-lead-form-submitted/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/flow-lead-form-submitted/*.html" ]
 
-[functions.flow-call-booked]
-enabled = true
-verify_jwt = false
-import_map = "./functions/flow-call-booked/deno.json"
-# Uncomment to specify a custom file path to the entrypoint.
-# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
-entrypoint = "./functions/flow-call-booked/index.ts"
-# Specifies static files to be bundled with the function. Supports glob patterns.
-# For example, if you want to serve static HTML pages in your function:
-# static_files = [ "./functions/flow-call-booked/*.html" ]
-
 [functions.cron-message-sender]
 enabled = true
 verify_jwt = false

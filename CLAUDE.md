@@ -85,7 +85,7 @@ Edge functions are written in TypeScript/Deno and deployed via Supabase CLI.
   - `queueSteps(supabase, contactId, steps, contact, settings)` — queues all steps into message_queue
 
 ## Edge Functions
-- `flow-call-booked` — Calendly webhook → books zoom call, time-relative reminders, YES/NO branch
+- `book-call` / `manage-booking` / `get-availability` — self-built booking system (replaced Calendly 2026-09) backed by Kornél's Google Calendar; `manage-booking` handles self-serve reschedule/cancel via a token link. Both `book-call` and `manage-booking` call the shared `handleCallBooked` helper in `_shared/utils.ts` for confirmation/reminder logic
 - `flow-lead-form-submitted` — lead form → queues Flow #1 steps
 - `flow-no-contact-1/2/3` — no reply followup sequences
 - `flow-long-term-nurture` — 12-week nurture sequence
@@ -99,7 +99,8 @@ Edge functions are written in TypeScript/Deno and deployed via Supabase CLI.
 - `cron-message-sender` — runs every minute, sends pending messages from message_queue
 
 ## Important Notes
-- Special-case functions (flow-call-booked, flow-ob-launch-call, flow-ob-client-signup, flow-ob-form-reminder) do NOT use queueSteps — they have time-relative scheduling or immediate sends
+- Special-case functions (book-call, manage-booking, flow-ob-launch-call, flow-ob-client-signup, flow-ob-form-reminder) do NOT use queueSteps — they have time-relative scheduling or immediate sends
+- `flow-ob-launch-call` is a separate, still-active Calendly webhook (onboarding launch call, different link/audience) — not affected by the booking-system replacement above. Still uses the `CALENDLY_WEBHOOK_TOKEN` secret.
 - "Client Closed" is a visual column in the Sales kanban only — dropping there auto-jumps the contact to Onboarding / "New Client Waiting for Onboarding Form" and fires flow-ob-client-signup. There is no separate flow-client-closed function.
 - All other functions use getSettings + getSequenceSteps + queueSteps from _shared/utils.ts
 - Sequence names in DB use em dashes (—) e.g. "Flow #1 — Lead Form Submitted"

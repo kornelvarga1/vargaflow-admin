@@ -47,9 +47,9 @@ serve(async (req) => {
     const phone = contact.phone;
     const email = contact.email;
     const zoomLink = meeting_link || "[zoom link]";
-    // Pull the contact's local TZ (saved by flow-call-booked from
-    // invitee.timezone). Fallback to ET so older contacts without the column
-    // still render a sane time.
+    // Pull the contact's local TZ (saved by the booking flow from the
+    // invitee's browser timezone). Fallback to ET so older contacts without
+    // the column still render a sane time.
     const contactTz = contact.timezone || "America/New_York";
     const formatTime = (tz: string) =>
       appointment_time

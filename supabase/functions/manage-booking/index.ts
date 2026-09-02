@@ -1,10 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ADMIN_BUSINESS_ID, cancelPendingMessages, getGoogleAccessToken, getSettings, handleCallBooked } from "../_shared/utils.ts";
+import { ADMIN_BUSINESS_ID, cancelPendingMessages, getGoogleAccessToken, getSettings, handleCallBooked, normalizePhone } from "../_shared/utils.ts";
 import { getBookingCalendarConnection, isSlotFree } from "../_shared/calendarAvailability.ts";
 
-// Public, token-gated reschedule/cancel endpoint. The reschedule_token
-// (uuid, unguessable) is the trust boundary — same model as Calendly's own
-// manage links, no additional auth.
+// Reschedule/cancel endpoint with two lookup modes:
+//   - token: the web manage-link's trust boundary (unguessable uuid), same
+//     as Calendly's own manage links, no additional auth.
+//   - phone: for the voice agent's reschedule_appointment/cancel_appointment
+//     tools, which don't have a token for a booking made in an earlier call
+//     — trusts the caller's own stated/caller-ID phone number instead, same
+//     trust level book-call already uses to create the booking in the first
+//     place. Finds their soonest upcoming confirmed booking.
+// token takes priority if both are somehow present.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,15 +18,45 @@ const corsHeaders = {
 };
 
 const MANAGE_BASE_URL = "https://vargaflow.com";
+const BOOKING_SELECT = "id, contact_id, start_time, end_time, status, google_event_id, meeting_link, reschedule_token, contacts(full_name, email, phone, timezone)";
 
-async function loadBooking(supabase: any, token: string) {
+async function loadBookingByToken(supabase: any, token: string) {
   const { data, error } = await supabase
     .from("bookings")
-    .select("id, contact_id, start_time, end_time, status, google_event_id, meeting_link, reschedule_token, contacts(full_name, email, phone, timezone)")
+    .select(BOOKING_SELECT)
     .eq("reschedule_token", token)
     .maybeSingle();
   if (error || !data) return null;
   return data;
+}
+
+async function loadBookingByPhone(supabase: any, phone: string) {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  const { data: contact } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("phone", normalized)
+    .is("business_id", null)
+    .maybeSingle();
+  if (!contact) return null;
+  const { data, error } = await supabase
+    .from("bookings")
+    .select(BOOKING_SELECT)
+    .eq("contact_id", contact.id)
+    .eq("status", "confirmed")
+    .gte("start_time", new Date().toISOString())
+    .order("start_time", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data;
+}
+
+async function loadBooking(supabase: any, { token, phone }: { token?: string; phone?: string }) {
+  if (token) return loadBookingByToken(supabase, token);
+  if (phone) return loadBookingByPhone(supabase, phone);
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -29,8 +65,10 @@ Deno.serve(async (req) => {
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   if (req.method === "GET") {
-    const token = new URL(req.url).searchParams.get("token") ?? "";
-    const booking = await loadBooking(supabase, token);
+    const url = new URL(req.url);
+    const token = url.searchParams.get("token") ?? "";
+    const phone = url.searchParams.get("phone") ?? "";
+    const booking = await loadBooking(supabase, { token, phone });
     if (!booking) {
       return new Response(JSON.stringify({ error: "not_found" }), {
         status: 404,
@@ -56,13 +94,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
+    const rawBody = await req.json();
+    // Retell's custom-tool calls wrap arguments as { args: {...} } rather
+    // than flat — same fix as book-call.
+    const body = (rawBody?.args as Record<string, unknown>) ?? rawBody;
     const token = (body.token ?? "").toString();
+    const phone = (body.phone ?? "").toString();
     const action = (body.action ?? "").toString();
 
-    const booking = await loadBooking(supabase, token);
+    const booking = await loadBooking(supabase, { token, phone });
     if (!booking) {
-      return new Response(JSON.stringify({ error: "not_found" }), {
+      return new Response(JSON.stringify({ error: token ? "not_found" : "no_upcoming_booking_for_phone" }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

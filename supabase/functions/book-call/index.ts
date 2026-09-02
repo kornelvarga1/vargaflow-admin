@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { ADMIN_BUSINESS_ID, findOrCreateContact, getGoogleAccessToken, getSettings, handleCallBooked } from "../_shared/utils.ts";
+import { ADMIN_BUSINESS_ID, findOrCreateContact, getGoogleAccessToken, getSettings, handleCallBooked, normalizePhone } from "../_shared/utils.ts";
 import { getBookingCalendarConnection, isSlotFree } from "../_shared/calendarAvailability.ts";
 
 // Public endpoint the booking widget submits to once a lead picks a slot.
@@ -38,6 +38,17 @@ Deno.serve(async (req) => {
 
     if (!full_name || !email || !phone || !start_iso || !end_iso) {
       return new Response(JSON.stringify({ error: "missing required fields" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    // Catches garbage input up front (an unresolved template token, "N/A",
+    // etc.) rather than silently proceeding with no real phone number — that
+    // used to let handleCallBooked's own no-phone branch swallow the SMS/email
+    // confirmation while book-call still reported success, so the caller got
+    // told "you'll get a text" when nothing was ever sent.
+    if (!normalizePhone(phone)) {
+      return new Response(JSON.stringify({ error: "invalid phone number" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

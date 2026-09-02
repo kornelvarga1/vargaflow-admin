@@ -95,6 +95,16 @@ serve(async (req) => {
       console.error("[send-manual-sms] activity_log insert error:", activityError.message);
     }
 
+    // Kornél typing a manual reply is the human-takeover signal for the AI
+    // text agent — pause it on this contact until he re-enables it.
+    const { error: pauseError } = await supabase
+      .from("contacts")
+      .update({ ai_texting_paused_at: now })
+      .eq("id", contact_id);
+    if (pauseError) {
+      console.error("[send-manual-sms] ai_texting_paused_at update error:", pauseError.message);
+    }
+
     return new Response(JSON.stringify({ sent: true, twilio_sid: twilioData.sid }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

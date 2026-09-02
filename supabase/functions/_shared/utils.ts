@@ -447,6 +447,92 @@ export async function getTwilioFromNumber(
   return fallback;
 }
 
+// Send a single SMS immediately via the Twilio REST API (not the
+// message_queue/cron-message-sender pipeline — that adds up to ~60s of
+// latency plus is subject to DNC/window/pacing gates meant for bulk
+// sends, not a live conversational reply). Same request shape as the
+// private sendSMS closures duplicated in cron-message-sender and
+// handleCallBooked, just exported for direct reuse (e.g. the text agent).
+export async function sendSmsNow(
+  params: { to: string; from: string; body: string }
+): Promise<{ sid: string }> {
+  const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID")!;
+  const twilioAuth = Deno.env.get("TWILIO_AUTH_TOKEN")!;
+  const res = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + btoa(`${twilioSid}:${twilioAuth}`),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ To: params.to, From: params.from, Body: params.body }),
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Twilio error: ${data.message ?? res.statusText}`);
+  }
+  return { sid: data.sid };
+}
+
+// Applies the same DNC/opt-out mechanics as inbound-sms's regex-based
+// negative-keyword path (dnd_sms + DNC-list + stage flip + stop active
+// outreach sequences + cancel pending messages), but for the AI text agent's
+// own judgment call on a reply that reads as a clear decline/hostile
+// dismissal without matching an exact opt-out phrase (e.g. "kick rocks").
+// Deliberately NOT wired into inbound-sms's existing regex path — that path
+// is compliance-critical (literal STOP-type keywords) and already proven in
+// production; left untouched rather than refactored to share this, so a bug
+// here can't regress it.
+export async function markContactNotInterested(
+  supabase: SupabaseClient,
+  params: {
+    contactId: string;
+    phone: string;
+    pipeline: string | null;
+    outreachAngle: string | null;
+    businessId: string;
+    reason: string;
+  }
+): Promise<void> {
+  const { contactId, phone, pipeline, outreachAngle, businessId, reason } = params;
+  const now = new Date().toISOString();
+
+  await supabase.from("contacts").update({ dnd_sms: true }).eq("id", contactId);
+  await supabase
+    .from("message_queue")
+    .update({ status: "cancelled" })
+    .eq("contact_id", contactId)
+    .eq("status", "pending")
+    .in("message_type", ["sms", "internal_sms"]);
+
+  if (pipeline === "Outreach") {
+    const { error: dncError } = await supabase.from("dnc_list").insert({
+      phone, reason, source_workflow: outreachAngle, business_id: businessId,
+    });
+    if (dncError && !/duplicate|unique/i.test(dncError.message)) {
+      console.error(`[markContactNotInterested] dnc_list insert error for ${phone}:`, dncError.message);
+    }
+
+    await supabase.from("contacts").update({ stage: "Not Interested", stage_entered_at: now }).eq("id", contactId);
+
+    const { data: activeSeqs } = await supabase
+      .from("contact_sequences")
+      .select("id, sequence:sequences(pipeline)")
+      .eq("contact_id", contactId)
+      .eq("status", "active");
+    const outreachSeqIds = (activeSeqs ?? [])
+      .filter((s: any) => s.sequence?.pipeline?.toLowerCase() === "outreach")
+      .map((s: any) => s.id);
+    if (outreachSeqIds.length > 0) {
+      await supabase.from("contact_sequences").update({ status: "stopped" }).in("id", outreachSeqIds);
+    }
+
+    await supabase.from("message_queue").update({ status: "cancelled" }).eq("contact_id", contactId).eq("status", "pending");
+  }
+}
+
 export async function notifyAdmin(text: string): Promise<void> {
   const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
   const chatId = Deno.env.get("TELEGRAM_CHAT_ID");

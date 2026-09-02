@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ADMIN_BUSINESS_ID, findOrCreateContact, normalizePhone, notifyAdmin, validateTwilioSignature } from "../_shared/utils.ts";
+import { handleInboundTextAgentReply } from "../_shared/textAgent.ts";
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
@@ -311,6 +312,17 @@ serve(async (req) => {
       }
     } catch (notifyErr) {
       console.error("[inbound-sms] contractor notification failed:", notifyErr);
+    }
+
+    // 6. AI text-agent auto-reply — Kornél's own line only, never for a
+    //    negative/opt-out reply just handled above, and never for a contact
+    //    already globally DNC'd from a previous message. Runs in the
+    //    background (can take a few seconds across tool-use round trips) so
+    //    the Twilio webhook response above isn't held up.
+    if (!isNegativeGlobal && !existing?.dnd_sms && contactBusinessId === null) {
+      EdgeRuntime.waitUntil(
+        handleInboundTextAgentReply(supabase, { contact: existing, fromPhone: from, inboundBody: body })
+      );
     }
 
     return twiml();

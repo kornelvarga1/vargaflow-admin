@@ -44,6 +44,7 @@ type ConversationContact = {
   lastMessageAt: string;
   hasUnread: boolean;
   messageCount: number;
+  ai_texting_paused_at: string | null;
 };
 
 type Message = {
@@ -69,7 +70,7 @@ function useConversationContacts() {
         .from("message_queue")
         .select(`
           contact_id, message_content, scheduled_at, sent_at, status, message_type, created_at, direction,
-          contact:contacts!contact_id(id, full_name, phone, pipeline, stage, last_read_at, business_id)
+          contact:contacts!contact_id(id, full_name, phone, pipeline, stage, last_read_at, business_id, ai_texting_paused_at)
         `)
         .or(`business_id.is.null,business_id.eq.${ADMIN_BUSINESS_ID}`)
         .in("status", ["sent", "received"])
@@ -80,7 +81,7 @@ function useConversationContacts() {
       if (error) throw error;
 
       const convos: ConversationContact[] = [];
-      const groupedByContact = new Map<string, { msgs: typeof messages; contact: { id: string; full_name: string; phone: string | null; pipeline: string; stage: string; last_read_at: string | null } }>();
+      const groupedByContact = new Map<string, { msgs: typeof messages; contact: { id: string; full_name: string; phone: string | null; pipeline: string; stage: string; last_read_at: string | null; ai_texting_paused_at: string | null } }>();
 
       for (const msg of messages || []) {
         const contact = (msg as any).contact;
@@ -109,6 +110,7 @@ function useConversationContacts() {
               (!contact.last_read_at || new Date((m as any).created_at) > new Date(contact.last_read_at))
           ),
           messageCount: msgs.length,
+          ai_texting_paused_at: contact.ai_texting_paused_at ?? null,
         });
       }
 
@@ -192,7 +194,7 @@ function useFallbackContact(contactId: string | null, skip: boolean) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("contacts")
-        .select("id, full_name, phone, pipeline, stage")
+        .select("id, full_name, phone, pipeline, stage, ai_texting_paused_at")
         .eq("id", contactId!)
         .single();
       if (error) throw error;
@@ -244,6 +246,17 @@ export default function MessageQueuePage() {
     setSeenIds((prev) => new Set([...prev, id]));
     supabase.from("contacts").update({ last_read_at: new Date().toISOString() }).eq("id", id).then(() => {
       qc.invalidateQueries({ queryKey: ["conversation_contacts"] });
+    });
+  };
+
+  // AI text agent pause/resume — pausing also happens automatically the
+  // moment a manual SMS is sent (see send-manual-sms), this is the explicit
+  // "hand control back to the AI" control.
+  const toggleAiTexting = (contact: { id: string; ai_texting_paused_at: string | null }) => {
+    const next = contact.ai_texting_paused_at ? null : new Date().toISOString();
+    supabase.from("contacts").update({ ai_texting_paused_at: next }).eq("id", contact.id).then(() => {
+      qc.invalidateQueries({ queryKey: ["conversation_contacts"] });
+      qc.invalidateQueries({ queryKey: ["contact_fallback", contact.id] });
     });
   };
 
@@ -303,6 +316,7 @@ export default function MessageQueuePage() {
     lastMessageAt: new Date().toISOString(),
     hasUnread: false,
     messageCount: 0,
+    ai_texting_paused_at: fallbackContactRaw.ai_texting_paused_at ?? null,
   } : undefined);
 
   const filteredContacts = contacts.filter((c) => {
@@ -507,6 +521,18 @@ export default function MessageQueuePage() {
                         {(activeSeq as any).sequences?.name || "Sequence"} — Step {activeSeq.current_step}
                       </Badge>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => toggleAiTexting(effectiveContact)}
+                      className={`inline-flex items-center gap-1 text-xs font-normal rounded-full border px-2.5 py-0.5 transition-colors ${
+                        effectiveContact.ai_texting_paused_at
+                          ? "border-border/60 text-muted-foreground hover:text-foreground"
+                          : "border-primary/30 text-primary bg-primary/5 hover:bg-primary/10"
+                      }`}
+                    >
+                      <Sparkles className="w-3 h-3" strokeWidth={1.5} />
+                      {effectiveContact.ai_texting_paused_at ? "AI texting: Paused" : "AI texting: Active"}
+                    </button>
                   </div>
                 </div>
               );

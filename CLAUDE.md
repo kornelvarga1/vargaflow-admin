@@ -77,6 +77,14 @@ Edge functions are written in TypeScript/Deno and deployed via Supabase CLI.
 - `automation_logs` — log of every flow run
 - `processed_webhooks` — dedup table for Calendly webhooks
 
+## Trade-matched voice demos in outreach copy (added 2026-09-06)
+
+`{{demo_company}}` / `{{demo_number}}` resolve from the contact's trade tag (`garage_door`, `appliance_repair`, `air_duct`, `chimney`, `pest_control`), so one sequence sends each trade its own voice demo. Falls back to the roofing demo when no trade tag matches. Rationale: a roofing demo made non-roofers hang up in 12–22s while roofers stayed 51–229s.
+
+**Trap — `resolveTemplate` exists in TWO places.** `cron-message-sender` **inlines its own copy** (the edge bundler doesn't follow `_shared`), so editing `_shared/utils.ts` alone silently does nothing for follow-up steps. Step 1 is templated by `enroll-outreach`; **steps 2+ are templated by `cron-message-sender`** when the previous step sends. Change both or follow-ups render a literal `{{demo_number}}`.
+
+**Trap — every contact `.select()` feeding `resolveTemplate` must include `tags`.** Three did not and all three needed fixing: `enroll-outreach`, `cron-message-sender` (the follow-up queue path), and `flow-outreach-warm-enroll`. A missing `tags` fails silently into the fallback demo rather than erroring.
+
 ## Shared Utilities
 - `supabase/functions/_shared/utils.ts` — shared helpers used by all Edge Functions:
   - `getSettings(supabase)` — fetches settings row

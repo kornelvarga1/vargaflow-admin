@@ -100,7 +100,8 @@ serve(async (req) => {
       const chunk = contact_ids.slice(i, i + CHUNK_SIZE);
       const { data: chunkContacts, error: contactsErr } = await supabase
         .from("contacts")
-        .select("id, full_name, phone, pipeline, outreach_angle, business_id")
+        // tags is needed by resolveTemplate to pick the trade-matched voice demo
+        .select("id, full_name, phone, pipeline, outreach_angle, business_id, tags")
         .in("id", chunk);
       if (contactsErr) {
         return json(500, { error: `contacts fetch failed: ${contactsErr.message}` });

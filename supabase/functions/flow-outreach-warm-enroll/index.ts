@@ -80,7 +80,8 @@ serve(async (req) => {
 
     const { data: contact, error: contactErr } = await supabase
       .from("contacts")
-      .select("id, full_name, phone, email, business_id, dnd_sms")
+      // tags drives the trade-matched demo number/company in resolveTemplate
+      .select("id, full_name, phone, email, business_id, dnd_sms, tags")
       .eq("id", contact_id)
       .maybeSingle();
     if (contactErr || !contact) return json(404, { error: "contact not found" });

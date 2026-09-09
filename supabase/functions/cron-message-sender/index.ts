@@ -108,13 +108,39 @@ interface PacingDecision {
   paceIntervalSeconds: number;
 }
 
+// Trade-matched voice demos. Inlined from _shared/utils.ts TRADE_DEMOS. Keep in sync.
+// This path matters for follow-up steps: step 1 is templated by enroll-outreach,
+// but steps 2+ are templated HERE when the previous step sends. If the contact
+// select feeding this loses `tags`, every follow-up silently falls back to the
+// roofing demo (or renders a literal {{demo_number}}).
+const TRADE_DEMOS: Record<string, { company: string; number: string }> = {
+  garage_door:      { company: "Apex Overhead Door",        number: "(616) 449-1976" },
+  appliance_repair: { company: "Redline Appliance Repair",  number: "(567) 364-8596" },
+  air_duct:         { company: "Clearway Duct & Air",       number: "(878) 378-9417" },
+  chimney:          { company: "Hearth & Flue Chimney",     number: "(708) 438-6561" },
+  pest_control:     { company: "Sentry Pest Solutions",     number: "(716) 576-3217" },
+};
+const DEFAULT_DEMO = { company: "Summit Roofing & Exteriors", number: "(213) 238-5364" };
+
+function demoForContact(contact: Record<string, any>) {
+  const tags: string[] = Array.isArray(contact?.tags) ? contact.tags : [];
+  for (const t of tags) {
+    const hit = TRADE_DEMOS[t];
+    if (hit) return hit;
+  }
+  return DEFAULT_DEMO;
+}
+
 // Inlined from _shared/utils.ts resolveTemplate. Keep in sync.
 function resolveTemplate(
   template: string,
   contact: Record<string, any>,
   settings: Record<string, any>,
 ): string {
+  const demo = demoForContact(contact);
   const vars: Record<string, string> = {
+    demo_number: demo.number,
+    demo_company: demo.company,
     contact_first_name: contact?.full_name?.split(" ")[0] ?? "",
     contact_name: contact?.full_name ?? "",
     contact_phone: contact?.phone ?? "",
@@ -287,7 +313,8 @@ async function queueNextStep(
   // Fetch fresh contact for template resolution (msg.contact is a partial join).
   const { data: contactRow } = await supabase
     .from("contacts")
-    .select("full_name, phone, email")
+    // tags drives the trade-matched demo number/company in resolveTemplate
+    .select("full_name, phone, email, tags")
     .eq("id", msg.contact_id)
     .maybeSingle();
   const resolved = resolveTemplate(next.message_template, contactRow ?? {}, settings);

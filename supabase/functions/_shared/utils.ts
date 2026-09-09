@@ -301,12 +301,38 @@ export async function getSequenceSteps(supabase: SupabaseClient, sequenceName: s
   return steps;
 }
 
+// Trade-matched voice demos. A contact scraped for a given trade carries that
+// trade as a tag (set at import time), and the outreach copy points them at the
+// demo answering as their own trade rather than a generic one — a roofing demo
+// made non-roofers hang up inside 20 seconds, while roofers stayed minutes.
+// Keyed by the trade tag on contacts.tags; falls back to the roofing demo.
+const TRADE_DEMOS: Record<string, { company: string; number: string }> = {
+  garage_door:      { company: "Apex Overhead Door",        number: "(616) 449-1976" },
+  appliance_repair: { company: "Redline Appliance Repair",  number: "(567) 364-8596" },
+  air_duct:         { company: "Clearway Duct & Air",       number: "(878) 378-9417" },
+  chimney:          { company: "Hearth & Flue Chimney",     number: "(708) 438-6561" },
+  pest_control:     { company: "Sentry Pest Solutions",     number: "(716) 576-3217" },
+};
+const DEFAULT_DEMO = { company: "Summit Roofing & Exteriors", number: "(213) 238-5364" };
+
+function demoForContact(contact: Record<string, any>) {
+  const tags: string[] = Array.isArray(contact.tags) ? contact.tags : [];
+  for (const t of tags) {
+    const hit = TRADE_DEMOS[t];
+    if (hit) return hit;
+  }
+  return DEFAULT_DEMO;
+}
+
 export function resolveTemplate(
   template: string,
   contact: Record<string, any>,
   settings: Record<string, any>
 ): string {
+  const demo = demoForContact(contact);
   const vars: Record<string, string> = {
+    demo_number: demo.number,
+    demo_company: demo.company,
     contact_first_name: contact.full_name?.split(" ")[0] ?? "",
     contact_name: contact.full_name ?? "",
     contact_phone: contact.phone ?? "",

@@ -5,11 +5,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // business's voice_agents row, keyed by the business_id we passed through
 // as `state` in voice-calendar-oauth-start.
 
-function html(body: string) {
-  return new Response(
-    `<!doctype html><html><body style="font-family: sans-serif; padding: 2rem;">${body}</body></html>`,
-    { headers: { "Content-Type": "text/html" } },
-  );
+// Every exit from this function hands the contractor off to a real page on
+// vargaflow.com rather than rendering anything here. Supabase serves edge
+// function responses from *.supabase.co as Content-Type: text/plain with a
+// `default-src 'none'; sandbox` CSP no matter what headers we set, so HTML
+// returned from here reaches the browser as raw markup — which is the last
+// thing a client should see at the end of onboarding.
+const RESULT_PAGE = "https://vargaflow.com/calendar-connected";
+
+function finish(status: string) {
+  return Response.redirect(`${RESULT_PAGE}?status=${encodeURIComponent(status)}`, 302);
 }
 
 Deno.serve(async (req) => {
@@ -19,10 +24,11 @@ Deno.serve(async (req) => {
   const error = url.searchParams.get("error");
 
   if (error) {
-    return html(`<h2>Calendar connection cancelled</h2><p>${error}</p>`);
+    console.warn("[voice-calendar-oauth-callback] consent declined", error);
+    return finish("cancelled");
   }
   if (!code || !businessId) {
-    return html(`<h2>Something went wrong</h2><p>Missing code or business reference.</p>`);
+    return finish("invalid");
   }
 
   const clientId = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID")!;
@@ -45,13 +51,15 @@ Deno.serve(async (req) => {
   const tokenData = await tokenRes.json();
   if (!tokenRes.ok) {
     console.error("[voice-calendar-oauth-callback] token exchange failed", tokenData);
-    return html(`<h2>Calendar connection failed</h2><p>${JSON.stringify(tokenData)}</p>`);
+    return finish("exchange_failed");
   }
 
   if (!tokenData.refresh_token) {
-    return html(
-      `<h2>No refresh token received</h2><p>This usually means the account already granted access before. Revoke access at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a> for this app and try connecting again.</p>`,
-    );
+    console.warn("[voice-calendar-oauth-callback] no refresh_token in grant", {
+      businessId,
+      scope: tokenData.scope,
+    });
+    return finish("already_connected");
   }
 
   const supabase = createClient(
@@ -70,8 +78,8 @@ Deno.serve(async (req) => {
 
   if (dbError) {
     console.error("[voice-calendar-oauth-callback] db update failed", dbError);
-    return html(`<h2>Calendar connected, but saving it failed</h2><p>${dbError.message}</p>`);
+    return finish("save_failed");
   }
 
-  return html(`<h2>Calendar connected</h2><p>You can close this tab.</p>`);
+  return finish("connected");
 });

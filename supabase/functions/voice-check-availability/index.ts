@@ -78,7 +78,12 @@ function formatSlotLabel(utcDate: Date, timeZone: string, dayOffset: number): st
   return `${dayLabel} at ${timeStr}`;
 }
 
-// Retell sends tool arguments as a JSON body; a bare call has no body at all.
+// Retell nests the tool arguments under `args` and puts call metadata beside
+// them, so read `body.args` first and fall back to the flat shape for direct
+// curl testing — same pattern as voice-book-appointment. Reading only the flat
+// shape silently degrades every request to the defaults, which is exactly what
+// happened on the 2026-09-09 test call: the agent sent time_of_day=afternoon
+// three times and got the unfiltered spread back each time.
 async function readPreferences(req: Request) {
   let body: Record<string, unknown> = {};
   try {
@@ -90,10 +95,12 @@ async function readPreferences(req: Request) {
     body = {};
   }
 
-  const rawTod = String(body.time_of_day ?? "any").toLowerCase().trim();
+  const args = (body.args as Record<string, unknown>) ?? body;
+
+  const rawTod = String(args.time_of_day ?? "any").toLowerCase().trim();
   const timeOfDay = rawTod in TIME_OF_DAY_RANGES ? rawTod : "any";
 
-  const rawDay = String(body.day_preference ?? "any").toLowerCase().trim();
+  const rawDay = String(args.day_preference ?? "any").toLowerCase().trim();
   const dayPreference = ["today", "tomorrow", "this_week", "any"].includes(rawDay) ? rawDay : "any";
 
   return { timeOfDay, dayPreference };

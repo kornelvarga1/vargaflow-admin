@@ -64,11 +64,28 @@ Deno.serve(async (req) => {
     .maybeSingle();
   const businessName = business?.name ?? "the business you called";
 
+  // Replies should reach the contractor, not vanish into a no-reply void: a
+  // customer answering their own confirmation is both the obvious thing to do
+  // and one of the strongest positive signals a mailbox provider has, which
+  // this domain needs while its sending reputation is still new.
+  const { data: voiceAgent } = await supabase
+    .from("voice_agents")
+    .select("notification_email, retell_phone_number")
+    .eq("business_id", businessId)
+    .maybeSingle();
+
+  // The number the customer reached the AI on. Their own call forwards here, so
+  // either number works — this one is guaranteed to be correct and current.
+  const callbackNumber = voiceAgent?.retell_phone_number ?? null;
+  const callbackLine = callbackNumber
+    ? `<p>Need to change anything? Call <a href="tel:${callbackNumber}">${callbackNumber}</a> or reply to this email.</p>`
+    : `<p>If anything changes on your end, just call the number back or reply to this email.</p>`;
+
   const html = `
     <p>Hi ${customerName},</p>
     <p>This confirms your appointment with <strong>${businessName}</strong>.</p>
     <p>${confirmationDetails}</p>
-    <p>If anything changes on your end, just call the number back.</p>
+    ${callbackLine}
   `.trim();
 
   const resendKey = Deno.env.get("RESEND_API_KEY")!;
@@ -78,6 +95,7 @@ Deno.serve(async (req) => {
     body: JSON.stringify({
       from: `${businessName} <voice@vargaflow.com>`,
       to: customerEmail,
+      ...(voiceAgent?.notification_email ? { reply_to: voiceAgent.notification_email } : {}),
       subject: `Appointment Confirmed — ${businessName}`,
       html,
     }),

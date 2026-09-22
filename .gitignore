@@ -30,3 +30,7 @@ dist-ssr
 bin/
 supabase/.temp/
 .vercel
+
+# Local env and tooling
+.env
+.claude/settings.local.json

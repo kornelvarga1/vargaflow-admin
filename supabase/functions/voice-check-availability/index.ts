@@ -38,6 +38,27 @@ function json(status: number, body: unknown) {
   });
 }
 
+/**
+ * Optional per-weekday hours from the tool URL, e.g.
+ * "mon:18-20,tue:8-20,wed:18-20,thu:18-20,fri:18-20,sat:8-20,sun:8-20".
+ * Passed in the URL rather than stored on voice_agents so an agent whose owner
+ * works shifts can have uneven hours without a schema change. Returns null when
+ * absent or unparseable, which falls back to hours_start/hours_end.
+ */
+function parseSchedule(raw: string | null): Record<string, [number, number]> | null {
+  if (!raw) return null;
+  const out: Record<string, [number, number]> = {};
+  for (const part of raw.split(",")) {
+    const m = part.trim().toLowerCase().match(/^(mon|tue|wed|thu|fri|sat|sun):(\d{1,2})-(\d{1,2})$/);
+    if (!m) return null;
+    const start = Number(m[2]);
+    const end = Number(m[3]);
+    if (start >= end || end > 24) return null;
+    out[m[1]] = [start, end];
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function zonedTimeToUtc(year: number, month: number, day: number, hour: number, minute: number, timeZone: string): Date {
   const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute));
   const fmt = new Intl.DateTimeFormat("en-US", {
@@ -201,12 +222,25 @@ Deno.serve(async (req) => {
 
   const earliestAllowed = new Date(now.getTime() + MIN_NOTICE_MINUTES * 60 * 1000);
   const preferred = TIME_OF_DAY_RANGES[timeOfDay];
-  const hourFrom = Math.max(hoursStart, preferred.start);
-  const hourTo = Math.min(hoursEnd, preferred.end);
+  const schedule = parseSchedule(url.searchParams.get("schedule"));
 
   const candidates: { label: string; start_iso: string; end_iso: string; dayOffset: number; hour: number }[] = [];
 
   for (let dayOffset = firstDay; dayOffset <= lastDay; dayOffset++) {
+    // With a per-weekday schedule, a day it does not list is closed. Without
+    // one, every day uses the voice_agents hours, as before.
+    let dayStart = hoursStart;
+    let dayEnd = hoursEnd;
+    if (schedule) {
+      const noonLocal = zonedTimeToUtc(nowLocal.year, nowLocal.month, nowLocal.day + dayOffset, 12, 0, timeZone);
+      const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(noonLocal).toLowerCase();
+      const window = schedule[weekday];
+      if (!window) continue;
+      [dayStart, dayEnd] = window;
+    }
+    const hourFrom = Math.max(dayStart, preferred.start);
+    const hourTo = Math.min(dayEnd, preferred.end);
+
     for (let hour = hourFrom; hour < hourTo; hour++) {
       const slotStart = zonedTimeToUtc(nowLocal.year, nowLocal.month, nowLocal.day + dayOffset, hour, 0, timeZone);
       const slotEnd = new Date(slotStart.getTime() + SLOT_MINUTES * 60 * 1000);
@@ -235,7 +269,9 @@ Deno.serve(async (req) => {
       time_of_day: timeOfDay,
       day_preference: dayPreference,
       days_ahead: lastDay - firstDay + 1,
-      business_hours: `${hoursStart}:00-${hoursEnd}:00 ${timeZone}`,
+      business_hours: schedule
+        ? `${url.searchParams.get("schedule")} (${timeZone})`
+        : `${hoursStart}:00-${hoursEnd}:00 ${timeZone}`,
     },
   });
 });

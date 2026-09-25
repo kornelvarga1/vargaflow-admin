@@ -25,6 +25,29 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:8080",
 ]);
 
+const MAX_WEB_CALLS_PER_HOUR = 20;
+
+async function countRecentWebCalls(headers: Record<string, string>): Promise<number | null> {
+  try {
+    const res = await fetch("https://api.retellai.com/v2/list-calls", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        filter_criteria: {
+          call_type: ["web_call"],
+          start_timestamp: { lower_threshold: Date.now() - 60 * 60 * 1000 },
+        },
+        limit: MAX_WEB_CALLS_PER_HOUR + 1,
+      }),
+    });
+    if (!res.ok) return null;
+    const calls = await res.json();
+    return Array.isArray(calls) ? calls.length : null;
+  } catch {
+    return null;
+  }
+}
+
 function cors(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin && ALLOWED_ORIGINS.has(origin) ? origin : "https://kornelvarga.com",
@@ -65,6 +88,16 @@ Deno.serve(async (req) => {
   if (!numRes.ok || !agentId) {
     console.error("[demo-web-call] no agent bound to", number, numData);
     return json(502, { error: "demo line unavailable" }, origin);
+  }
+
+  // Cost guard: every web call bills Retell minutes, and this endpoint is
+  // anonymous. Cap how many browser calls can start per hour across all demo
+  // lines, counted from Retell itself so no table is needed. If the count
+  // cannot be read, fail open rather than break the demo for a real visitor.
+  const recent = await countRecentWebCalls(headers);
+  if (recent !== null && recent >= MAX_WEB_CALLS_PER_HOUR) {
+    console.warn(`[demo-web-call] hourly cap hit (${recent})`);
+    return json(429, { error: "busy, try again later" }, origin);
   }
 
   const callRes = await fetch("https://api.retellai.com/v2/create-web-call", {

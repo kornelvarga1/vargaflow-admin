@@ -4,14 +4,22 @@ The CRM and automation engine behind VargaFlow, a done-for-you marketing system 
 
 Built and operated solo.
 
+## In production
+
+Counted from the production database on 2026-09-29, March to September 2026:
+
+- **11,000+ SMS sent** through the queue via Twilio, with **600+ inbound replies** handled in the two-way inbox
+- **~6,000 contacts** in the pipeline
+- **600+ messages held back** by quiet-hours rules and **280+ numbers suppressed** on the do-not-contact list, both enforced automatically at send time
+
 ## What it does
 
-- **Sales pipeline and CRM** — contacts, stages, drag-to-advance board, outreach tracking
-- **Automated sequences** — multi-step SMS and email flows with templated copy, dispatched from a queue
-- **Two-way messaging** — inbound SMS handling with an AI text agent that qualifies and hands off
-- **Browser calling** — outbound and inbound voice from the browser, with recordings and call logs
-- **Booking** — self-built scheduling backed by Google Calendar, with self-serve reschedule and cancel
-- **AI voice receptionist** — inbound call handling on Retell with ElevenLabs voices
+- **Sales pipeline and CRM**: contacts, stages, drag-to-advance board, outreach tracking
+- **Automated sequences**: multi-step SMS and email flows with templated copy, dispatched from a queue
+- **Two-way messaging**: inbound SMS handling with an AI text agent that qualifies and hands off
+- **Browser calling**: outbound and inbound voice from the browser, with recordings and call logs
+- **Booking**: self-built scheduling backed by Google Calendar, with self-serve reschedule and cancel
+- **AI voice receptionist**: inbound call handling on Retell with ElevenLabs voices
 
 ## Architecture
 
@@ -33,9 +41,9 @@ lead form / webhook
 
 The admin UI reads and writes the same Postgres tables directly through Supabase with row-level security.
 
-**Frontend** — React 18, TypeScript, Vite, Tailwind, shadcn/ui, Vitest, deployed on Vercel.
+**Frontend**: React 18, TypeScript, Vite, Tailwind, shadcn/ui, Vitest, deployed on Vercel.
 
-**Backend** — Supabase: Postgres with RLS, and a set of Deno edge functions split by responsibility:
+**Backend**: Supabase, Postgres with RLS, and a set of Deno edge functions split by responsibility:
 
 | Kind | Role |
 |---|---|
@@ -49,10 +57,10 @@ Most flow functions follow one pattern: `getSettings` + `getSequenceSteps` + `qu
 
 ## Problems worth reading the code for
 
-- **`cron-message-sender`** — queue draining with per-channel dispatch, retry and quiet-hours handling, where most of the operational edge cases live.
-- **`supabase/functions/_shared/`** — the shared sequence resolution and templating layer that keeps ~30 flow functions from duplicating each other.
-- **Booking** — replacing a third-party scheduler meant handling timezones, availability windows, calendar conflicts and self-serve cancellation with tokenised links, and doing it without `window.confirm()`, which mobile webviews silently suppress.
-- **Voice** — Twilio Voice SDK access tokens need a `cty` header and a matched key pair; get either wrong and you get an opaque `AccessTokenInvalid`.
+- **`cron-message-sender`**: queue draining with per-channel dispatch, retry and quiet-hours handling, where most of the operational edge cases live.
+- **`supabase/functions/_shared/`**: the shared sequence resolution and templating layer that keeps ~30 flow functions from duplicating each other.
+- **Booking**: replacing a third-party scheduler meant handling timezones, availability windows, calendar conflicts and self-serve cancellation with tokenised links, and doing it without `window.confirm()`, which mobile webviews silently suppress.
+- **Voice**: Twilio Voice SDK access tokens need a `cty` header and a matched key pair; get either wrong and you get an opaque `AccessTokenInvalid`.
 
 ## Running it
 
